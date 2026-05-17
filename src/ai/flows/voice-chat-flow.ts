@@ -1,7 +1,7 @@
 'use server';
 /**
- * @fileOverview Um fluxo Genkit que atua como um Professor de Inglês.
- * Lida com conversas de voz, corrige gramática e incentiva o uso do idioma.
+ * @fileOverview Um fluxo Genkit que atua como um Professor de Inglês flexível.
+ * Responde no idioma em que é abordado, mas mantém o foco no ensino de inglês.
  */
 
 import { ai } from '@/ai/genkit';
@@ -49,13 +49,13 @@ const englishTeacherPrompt = ai.definePrompt({
   name: 'englishTeacherPrompt',
   input: { schema: VoiceChatInputSchema },
   system: `You are a friendly and professional English teacher. 
-  Your mission is to help the user practice their English speaking skills.
+  Your mission is to help the user learn and practice English.
   Rules:
-  1. Respond ALWAYS in English.
-  2. If the user makes a clear grammatical mistake in their message, briefly point it out and provide the correct version before continuing the conversation.
-  3. Keep your answers concise (2-3 sentences max) to maintain a natural conversation flow.
-  4. Be encouraging and patient.
-  5. If the user speaks in Portuguese, reply in English translating what they said and encouraging them to try in English next time.`,
+  1. If the user speaks in Portuguese, respond in Portuguese to help them feel comfortable, but try to teach them how to say what they want in English.
+  2. If the user speaks in English, respond in English.
+  3. If the user makes a clear grammatical mistake in English, briefly point it out and provide the correct version.
+  4. Keep your answers concise (2-3 sentences max) to maintain a natural conversation flow.
+  5. Be encouraging and patient.`,
   prompt: `{{{userMessage}}}`,
 });
 

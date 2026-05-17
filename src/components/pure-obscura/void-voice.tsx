@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { voiceChat } from "@/ai/flows/voice-chat-flow";
-import { Mic, Loader2, Volume2, ChevronRight } from "lucide-react";
+import { Mic, Loader2, Volume2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function VoidVoice() {
@@ -18,8 +18,8 @@ export function VoidVoice() {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
-      // Alterado para en-US para melhor reconhecimento do aluno praticando inglês
-      recognition.lang = 'en-US';
+      // Alterado para pt-BR para que o usuário possa falar em português ou inglês (reconhecedores pt-BR costumam lidar bem com termos em inglês em contexto de aprendizado)
+      recognition.lang = 'pt-BR';
       recognition.continuous = false;
       recognition.interimResults = false;
 
@@ -101,7 +101,7 @@ export function VoidVoice() {
       <div className="text-center space-y-4 max-w-lg px-6 min-h-[160px] flex flex-col justify-end">
         {transcript && (
           <p className="text-muted-foreground/40 text-[10px] uppercase tracking-widest animate-pulse">
-            You said: "{transcript}"
+            Você disse: "{transcript}"
           </p>
         )}
         
@@ -121,7 +121,7 @@ export function VoidVoice() {
                   className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-accent hover:text-accent-foreground transition-colors duration-300 py-2 px-4 border border-accent/20 rounded-full"
                 >
                   <Volume2 size={12} strokeWidth={1.5} />
-                  Listen Again
+                  Ouvir novamente
                 </button>
               )}
             </div>
@@ -154,7 +154,7 @@ export function VoidVoice() {
       </div>
 
       <p className="text-[10px] uppercase tracking-[0.4em] text-muted-foreground/30">
-        {isRecording ? "Listening..." : "Tap to Speak English"}
+        {isRecording ? "Ouvindo..." : "Toque para falar"}
       </p>
 
       <audio ref={audioRef} className="hidden" />
