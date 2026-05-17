@@ -16,35 +16,48 @@ export function VoidVoice() {
 
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
-      // Alterado para pt-BR para que o usuário possa falar em português ou inglês (reconhecedores pt-BR costumam lidar bem com termos em inglês em contexto de aprendizado)
       recognition.lang = 'pt-BR';
       recognition.continuous = false;
       recognition.interimResults = false;
 
-      recognition.onresult = async (event: any) => {
+      recognition.onstart = () => {
+        setIsRecording(true);
+        setPlaybackError(false);
+      };
+
+      recognition.onresult = (event: any) => {
         const text = event.results[0][0].transcript;
         setTranscript(text);
         handleVoiceSubmit(text);
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error("Speech recognition error:", event.error);
+        setIsRecording(false);
       };
 
       recognition.onend = () => {
         setIsRecording(false);
       };
 
-      recognition.onerror = (event: any) => {
-        setIsRecording(false);
-      };
-
       recognitionRef.current = recognition;
     }
+
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
   }, []);
 
   const handleVoiceSubmit = async (text: string) => {
+    if (!text) return;
+    
     setIsProcessing(true);
     setAiResponse("");
-    setPlaybackError(false);
     
     try {
       const result = await voiceChat({ userMessage: text });
@@ -53,6 +66,7 @@ export function VoidVoice() {
       if (audioRef.current) {
         audioRef.current.src = result.audioDataUri;
         audioRef.current.play().catch((err) => {
+          console.warn("Autoplay blocked, showing manual play button.");
           setPlaybackError(true);
         });
       }
@@ -65,7 +79,7 @@ export function VoidVoice() {
 
   const toggleRecording = () => {
     if (!recognitionRef.current) {
-      alert("Your browser does not support speech recognition.");
+      alert("Seu navegador não suporta reconhecimento de voz.");
       return;
     }
 
@@ -74,9 +88,8 @@ export function VoidVoice() {
     } else {
       setTranscript("");
       setAiResponse("");
-      setPlaybackError(false);
-      setIsRecording(true);
       
+      // Preparar o áudio para evitar bloqueio de autoplay
       if (audioRef.current) {
         audioRef.current.load();
       }
@@ -84,6 +97,9 @@ export function VoidVoice() {
       try {
         recognitionRef.current.start();
       } catch (e) {
+        console.error("Failed to start recognition:", e);
+        // Se já estiver rodando, tentamos parar primeiro para a próxima vez funcionar
+        recognitionRef.current.stop();
         setIsRecording(false);
       }
     }
@@ -91,7 +107,9 @@ export function VoidVoice() {
 
   const manualPlay = () => {
     if (audioRef.current) {
-      audioRef.current.play().then(() => setPlaybackError(false)).catch(console.error);
+      audioRef.current.play()
+        .then(() => setPlaybackError(false))
+        .catch(err => console.error("Manual playback failed:", err));
     }
   };
 
