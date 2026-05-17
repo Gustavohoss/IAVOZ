@@ -1,8 +1,9 @@
+
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { voiceChat } from "@/ai/flows/voice-chat-flow";
-import { Mic, Loader2, Volume2 } from "lucide-react";
+import { Mic, Loader2, Volume2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function VoidVoice() {
@@ -11,55 +12,20 @@ export function VoidVoice() {
   const [transcript, setTranscript] = useState("");
   const [aiResponse, setAiResponse] = useState("");
   const [playbackError, setPlaybackError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
 
-  useEffect(() => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    
-    if (SpeechRecognition) {
-      const recognition = new SpeechRecognition();
-      recognition.lang = 'pt-BR';
-      recognition.continuous = false;
-      recognition.interimResults = false;
+  // Mantém uma referência da função de envio para evitar closures obsoletas
+  const handleVoiceSubmitRef = useRef<(text: string) => Promise<void>>(async () => {});
 
-      recognition.onstart = () => {
-        setIsRecording(true);
-        setPlaybackError(false);
-      };
-
-      recognition.onresult = (event: any) => {
-        const text = event.results[0][0].transcript;
-        setTranscript(text);
-        handleVoiceSubmit(text);
-      };
-
-      recognition.onerror = (event: any) => {
-        if (event.error !== 'no-speech' && event.error !== 'aborted') {
-          console.error("Speech recognition error:", event.error);
-        }
-        setIsRecording(false);
-      };
-
-      recognition.onend = () => {
-        setIsRecording(false);
-      };
-
-      recognitionRef.current = recognition;
-    }
-
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.abort();
-      }
-    };
-  }, []);
-
-  const handleVoiceSubmit = async (text: string) => {
-    if (!text) return;
+  const handleVoiceSubmit = useCallback(async (text: string) => {
+    if (!text || isProcessing) return;
     
     setIsProcessing(true);
     setAiResponse("");
+    setError(null);
     
     try {
       const result = await voiceChat({ userMessage: text });
@@ -72,41 +38,87 @@ export function VoidVoice() {
           setPlaybackError(true);
         });
       }
-    } catch (error) {
-      console.error("Error processing voice:", error);
+    } catch (err) {
+      console.error("Error processing voice:", err);
+      setError("Houve um erro ao processar sua fala. Tente novamente.");
     } finally {
       setIsProcessing(false);
     }
-  };
+  }, [isProcessing]);
+
+  // Atualiza a referência sempre que a função mudar
+  useEffect(() => {
+    handleVoiceSubmitRef.current = handleVoiceSubmit;
+  }, [handleVoiceSubmit]);
+
+  const initRecognition = useCallback(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    
+    if (!SpeechRecognition) {
+      setError("Seu navegador não suporta reconhecimento de voz.");
+      return null;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'pt-BR'; // Reconhece português para o professor entender o aluno
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onstart = () => {
+      setIsRecording(true);
+      setPlaybackError(false);
+      setError(null);
+    };
+
+    recognition.onresult = (event: any) => {
+      const text = event.results[0][0].transcript;
+      setTranscript(text);
+      handleVoiceSubmitRef.current(text);
+    };
+
+    recognition.onerror = (event: any) => {
+      setIsRecording(false);
+      if (event.error === 'not-allowed') {
+        setError("Permissão de microfone negada.");
+      } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
+        setError("Erro no microfone: " + event.error);
+      }
+    };
+
+    recognition.onend = () => {
+      setIsRecording(false);
+    };
+
+    return recognition;
+  }, []);
 
   const toggleRecording = () => {
-    if (!recognitionRef.current) {
-      alert("Seu navegador não suporta reconhecimento de voz.");
+    if (isProcessing) return;
+
+    // Se já estiver gravando, para
+    if (isRecording && recognitionRef.current) {
+      recognitionRef.current.stop();
       return;
     }
 
-    if (isRecording) {
-      // Forçar parada imediata
-      recognitionRef.current.stop();
-    } else {
-      // Limpar estados anteriores
-      setTranscript("");
-      setAiResponse("");
-      
-      // Garantir que não há nada rodando antes de começar
+    // Limpa estados
+    setTranscript("");
+    setAiResponse("");
+    setError(null);
+
+    // Reinicia a instância para garantir que não haja estados de erro pendentes
+    if (recognitionRef.current) {
+      try { recognitionRef.current.abort(); } catch(e) {}
+    }
+
+    recognitionRef.current = initRecognition();
+    
+    if (recognitionRef.current) {
       try {
-        recognitionRef.current.abort(); // Interrompe qualquer sessão fantasma
-        
-        // Pequeno timeout para garantir que o hardware do microfone foi liberado pelo navegador
-        setTimeout(() => {
-          try {
-            recognitionRef.current.start();
-          } catch (startError) {
-            console.warn("Could not start recognition, it might already be active.");
-          }
-        }, 100);
-      } catch (e) {
-        console.error("Failed to reset recognition:", e);
+        recognitionRef.current.start();
+      } catch (startError) {
+        console.error("Could not start recognition:", startError);
+        setError("Falha ao iniciar microfone. Tente recarregar a página.");
       }
     }
   };
@@ -123,6 +135,13 @@ export function VoidVoice() {
     <div className="flex flex-col items-center justify-center min-h-[60vh] gap-8">
       {/* IA Response Area */}
       <div className="text-center space-y-4 max-w-lg px-6 min-h-[160px] flex flex-col justify-end">
+        {error && (
+          <div className="flex items-center gap-2 text-destructive/80 text-[10px] uppercase tracking-widest animate-bounce">
+            <AlertCircle size={12} />
+            {error}
+          </div>
+        )}
+
         {transcript && (
           <p className="text-muted-foreground/40 text-[10px] uppercase tracking-widest animate-pulse">
             Você disse: "{transcript}"
@@ -178,7 +197,7 @@ export function VoidVoice() {
       </div>
 
       <p className="text-[10px] uppercase tracking-[0.4em] text-muted-foreground/30">
-        {isRecording ? "Ouvindo..." : "Toque para falar"}
+        {isRecording ? "Ouvindo..." : isProcessing ? "Processando..." : "Toque para falar"}
       </p>
 
       <audio ref={audioRef} className="hidden" />
