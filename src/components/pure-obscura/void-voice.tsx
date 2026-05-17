@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { voiceChat } from "@/ai/flows/voice-chat-flow";
-import { Mic, MicOff, Loader2, Volume2 } from "lucide-react";
+import { Mic, MicOff, Loader2, Volume2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function VoidVoice() {
@@ -11,6 +11,7 @@ export function VoidVoice() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [aiResponse, setAiResponse] = useState("");
+  const [playbackError, setPlaybackError] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
 
@@ -45,6 +46,7 @@ export function VoidVoice() {
   const handleVoiceSubmit = async (text: string) => {
     setIsProcessing(true);
     setAiResponse("");
+    setPlaybackError(false);
     
     try {
       const result = await voiceChat({ userMessage: text });
@@ -53,7 +55,11 @@ export function VoidVoice() {
       // Reproduzir o áudio retornado
       if (audioRef.current) {
         audioRef.current.src = result.audioDataUri;
-        audioRef.current.play();
+        // O play() retorna uma Promise que pode ser rejeitada pelo navegador
+        audioRef.current.play().catch((err) => {
+          console.warn("Reprodução automática bloqueada pelo navegador. Usuário deve clicar para ouvir.", err);
+          setPlaybackError(true);
+        });
       }
     } catch (error) {
       console.error("Erro ao processar voz:", error);
@@ -73,29 +79,58 @@ export function VoidVoice() {
     } else {
       setTranscript("");
       setAiResponse("");
+      setPlaybackError(false);
       setIsRecording(true);
-      recognitionRef.current.start();
+      
+      // "Acordar" o elemento de áudio em um gesto do usuário
+      if (audioRef.current) {
+        audioRef.current.load();
+      }
+      
+      try {
+        recognitionRef.current.start();
+      } catch (e) {
+        console.error("Erro ao iniciar gravação:", e);
+        setIsRecording(false);
+      }
+    }
+  };
+
+  const manualPlay = () => {
+    if (audioRef.current) {
+      audioRef.current.play().then(() => setPlaybackError(false)).catch(console.error);
     }
   };
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] gap-12">
-      <div className="text-center space-y-4 max-w-lg px-6">
+      <div className="text-center space-y-4 max-w-lg px-6 min-h-[120px] flex flex-col justify-end">
         {transcript && (
-          <p className="text-muted-foreground/60 text-sm italic animate-pulse">
-            "{transcript}"
+          <p className="text-muted-foreground/40 text-xs uppercase tracking-widest animate-pulse">
+            Ouvindo: "{transcript}"
           </p>
         )}
         
         {isProcessing ? (
-          <div className="flex justify-center">
-            <Loader2 className="w-6 h-6 text-accent animate-spin" strokeWidth={1} />
+          <div className="flex justify-center py-4">
+            <Loader2 className="w-5 h-5 text-accent animate-spin" strokeWidth={1} />
           </div>
         ) : (
           aiResponse && (
-            <p className="text-primary font-body text-xl tracking-wide leading-relaxed fade-in-slow">
-              {aiResponse}
-            </p>
+            <div className="space-y-4">
+              <p className="text-primary font-body text-lg md:text-xl tracking-wide leading-relaxed fade-in-slow">
+                {aiResponse}
+              </p>
+              {playbackError && (
+                <button 
+                  onClick={manualPlay}
+                  className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-accent hover:text-accent-foreground transition-colors duration-300 py-2 px-4 border border-accent/20 rounded-full"
+                >
+                  <Volume2 size={12} strokeWidth={1.5} />
+                  Clique para ouvir a resposta
+                </button>
+              )}
+            </div>
           )
         )}
       </div>
@@ -126,7 +161,7 @@ export function VoidVoice() {
       </div>
 
       <p className="text-[10px] uppercase tracking-[0.4em] text-muted-foreground/30">
-        {isRecording ? "O Vazio escuta..." : "Toque para falar"}
+        {isRecording ? "O Vazio escuta..." : "Toque no microfone para falar"}
       </p>
 
       <audio ref={audioRef} className="hidden" />
