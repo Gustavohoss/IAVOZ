@@ -14,23 +14,16 @@ export function VoidVoice() {
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
-  const isPlayingRef = useRef(false);
 
-  // Limpeza profunda da instância de reconhecimento
   const cleanupRecognition = useCallback(() => {
     if (recognitionRef.current) {
       try {
-        // Removemos todos os listeners para evitar vazamento de memória ou eventos fantasmas
         recognitionRef.current.onstart = null;
         recognitionRef.current.onresult = null;
         recognitionRef.current.onerror = null;
         recognitionRef.current.onend = null;
-        recognitionRef.current.onspeechstart = null;
-        
         recognitionRef.current.abort();
-      } catch (e) {
-        // Ignora erros de abort se já estiver parado
-      }
+      } catch (e) {}
       recognitionRef.current = null;
     }
   }, []);
@@ -39,63 +32,8 @@ export function VoidVoice() {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
-      isPlayingRef.current = false;
     }
   }, []);
-
-  const startRecording = useCallback(() => {
-    // 1. Limpa qualquer tentativa anterior agressivamente
-    cleanupRecognition();
-
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setError("Seu navegador não suporta reconhecimento de voz.");
-      return;
-    }
-
-    // 2. Pequeno delay para garantir que o hardware foi liberado pelo SO
-    setTimeout(() => {
-      try {
-        const recognition = new SpeechRecognition();
-        recognition.lang = 'pt-BR'; // Mantido pt-BR para entender dúvidas em português
-        recognition.continuous = false;
-        recognition.interimResults = false;
-
-        recognition.onstart = () => {
-          setIsRecording(true);
-          setError(null);
-        };
-
-        recognition.onresult = (event: any) => {
-          const text = event.results[0][0].transcript;
-          if (text) {
-            setTranscript(text);
-            handleVoiceSubmit(text);
-          }
-        };
-
-        recognition.onerror = (event: any) => {
-          // No-speech e aborted não são erros críticos
-          if (event.error !== 'no-speech' && event.error !== 'aborted') {
-            console.error("Speech Recognition Error:", event.error);
-            setError(`Erro no microfone: ${event.error}`);
-          }
-          setIsRecording(false);
-        };
-
-        recognition.onend = () => {
-          setIsRecording(false);
-        };
-
-        recognitionRef.current = recognition;
-        recognition.start();
-      } catch (e) {
-        console.error("Failed to start speech recognition:", e);
-        setError("Não foi possível iniciar o microfone.");
-        setIsRecording(false);
-      }
-    }, 200);
-  }, [cleanupRecognition]);
 
   const handleVoiceSubmit = async (text: string) => {
     if (!text || isProcessing) return;
@@ -111,27 +49,71 @@ export function VoidVoice() {
       
       if (audioRef.current) {
         audioRef.current.src = result.audioDataUri;
-        audioRef.current.play()
-          .then(() => {
-            isPlayingRef.current = true;
-          })
-          .catch((err) => {
-            console.warn("Autoplay bloqueado. Clique no texto para ouvir.");
-            isPlayingRef.current = false;
-          });
+        audioRef.current.play().catch(() => {
+          console.warn("Autoplay blocked");
+        });
       }
     } catch (err) {
       console.error("Error processing voice:", err);
-      setError("Ocorreu um erro ao processar sua voz.");
+      setError("Erro ao processar.");
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const toggleSession = () => {
-    // Se está processando a resposta da IA, não permite clicar
-    if (isProcessing) return;
+  const startRecording = useCallback(() => {
+    cleanupRecognition();
 
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setError("Navegador não suportado.");
+      return;
+    }
+
+    setTimeout(() => {
+      try {
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'pt-BR';
+        recognition.continuous = false;
+        recognition.interimResults = false;
+
+        recognition.onstart = () => {
+          setIsRecording(true);
+          setError(null);
+        };
+
+        recognition.onresult = (event: any) => {
+          const text = event.results[0][0].transcript;
+          if (text) {
+            setTranscript(text);
+            // Abortamos imediatamente para ganhar milissegundos de latência
+            recognition.abort();
+            handleVoiceSubmit(text);
+          }
+        };
+
+        recognition.onerror = (event: any) => {
+          if (event.error !== 'no-speech' && event.error !== 'aborted') {
+            setError(`Erro: ${event.error}`);
+          }
+          setIsRecording(false);
+        };
+
+        recognition.onend = () => {
+          setIsRecording(false);
+        };
+
+        recognitionRef.current = recognition;
+        recognition.start();
+      } catch (e) {
+        setError("Falha no microfone.");
+        setIsRecording(false);
+      }
+    }, 100);
+  }, [cleanupRecognition]);
+
+  const toggleSession = () => {
+    if (isProcessing) return;
     if (isRecording) {
       cleanupRecognition();
       setIsRecording(false);
@@ -142,7 +124,6 @@ export function VoidVoice() {
     }
   };
 
-  // Cleanup ao desmontar o componente
   useEffect(() => {
     return () => {
       cleanupRecognition();
@@ -154,7 +135,7 @@ export function VoidVoice() {
     <div className="flex flex-col items-center justify-center min-h-[60vh] gap-8">
       <div className="text-center space-y-4 max-w-lg px-6 min-h-[160px] flex flex-col justify-end">
         {error && (
-          <div className="flex items-center justify-center gap-2 text-destructive/80 text-[10px] uppercase tracking-widest animate-pulse">
+          <div className="flex items-center justify-center gap-2 text-destructive/80 text-[10px] uppercase tracking-widest">
             <AlertCircle size={12} />
             {error}
           </div>
@@ -169,7 +150,7 @@ export function VoidVoice() {
         {isProcessing ? (
           <div className="flex flex-col items-center gap-2 py-4">
             <Loader2 className="w-5 h-5 text-accent animate-spin" strokeWidth={1} />
-            <span className="text-[10px] uppercase tracking-[0.2em] text-accent/50">O Professor está pensando...</span>
+            <span className="text-[10px] uppercase tracking-[0.2em] text-accent/50">Analisando...</span>
           </div>
         ) : (
           aiResponse && (
@@ -187,12 +168,11 @@ export function VoidVoice() {
           onClick={toggleSession}
           disabled={isProcessing}
           className={cn(
-            "relative z-10 w-32 h-32 rounded-full flex items-center justify-center transition-all duration-700",
+            "relative z-10 w-32 h-32 rounded-full flex items-center justify-center transition-all duration-500",
             isRecording 
-              ? "bg-accent/20 scale-110 shadow-[0_0_60px_rgba(168,85,247,0.3)]" 
-              : isProcessing 
-              ? "bg-primary/10 opacity-50 cursor-not-allowed"
-              : "bg-primary/5 hover:bg-primary/10 border border-white/5 hover:border-accent/30",
+              ? "bg-accent/20 scale-105 shadow-[0_0_40px_rgba(168,85,247,0.2)]" 
+              : "bg-primary/5 border border-white/5 hover:border-accent/30",
+            isProcessing && "opacity-50 cursor-not-allowed"
           )}
         >
           {isRecording ? (
@@ -210,7 +190,7 @@ export function VoidVoice() {
 
       <div className="flex flex-col items-center gap-2">
         <p className="text-[10px] uppercase tracking-[0.4em] text-muted-foreground/30">
-          {isRecording ? "Ouvindo..." : isProcessing ? "Processando..." : "Toque para falar"}
+          {isRecording ? "Ouvindo..." : "Toque para falar"}
         </p>
       </div>
 

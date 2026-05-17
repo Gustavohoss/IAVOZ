@@ -1,7 +1,7 @@
 'use server';
 /**
- * @fileOverview Um fluxo Genkit que atua como um Professor de Inglês flexível.
- * Responde no idioma em que é abordado, mas mantém o foco no ensino de inglês.
+ * @fileOverview Um fluxo Genkit otimizado para latência mínima.
+ * Atua como um Professor de Inglês ágil que responde rapidamente.
  */
 
 import { ai } from '@/ai/genkit';
@@ -45,21 +45,6 @@ async function toWav(
   });
 }
 
-const englishTeacherPrompt = ai.definePrompt({
-  name: 'englishTeacherPrompt',
-  input: { schema: VoiceChatInputSchema },
-  system: `Você é um professor de inglês amigável, paciente e profissional.
-  Sua missão é ajudar o usuário a aprender e praticar inglês de forma natural.
-
-  REGRAS DE OURO:
-  1. RESPONDA NO IDIOMA DO USUÁRIO: Se o usuário falar em português, responda obrigatoriamente em português. Se ele falar em inglês, responda em inglês.
-  2. ENSINO INTEGRADO: Mesmo respondendo em português, tente ensinar uma palavra ou frase curta em inglês relacionada ao assunto.
-  3. SEJA PROATIVO: Sempre incentive o aprendizado. Pergunte se o usuário quer aprender algo específico (como inglês para viagens ou trabalho) ou se prefere que você ensine o básico do zero.
-  4. CORREÇÃO: Se o usuário errar algo em inglês, corrija-o de forma gentil e mostre a forma certa.
-  5. CONCISÃO: Mantenha a resposta curta (máximo 3 frases) para que a conversa por voz não fique cansativa.`,
-  prompt: `{{{userMessage}}}`,
-});
-
 export async function voiceChat(input: VoiceChatInput): Promise<VoiceChatOutput> {
   return voiceChatFlow(input);
 }
@@ -71,11 +56,18 @@ const voiceChatFlow = ai.defineFlow(
     outputSchema: VoiceChatOutputSchema,
   },
   async (input) => {
-    const { text } = await englishTeacherPrompt(input);
+    // Usando ai.generate diretamente para reduzir overhead de wrappers de prompt
+    const { text } = await ai.generate({
+      system: `You are an agile English teacher. 
+      Rules:
+      1. Speak the same language as the user.
+      2. Be extremely concise (max 2 short sentences).
+      3. Teach one English point or ask one follow-up question.
+      4. Always offer to help with basics or specific topics.`,
+      prompt: input.userMessage,
+    });
 
-    if (!text) {
-      throw new Error('The AI did not generate a response.');
-    }
+    if (!text) throw new Error('No response');
 
     const { media } = await ai.generate({
       model: googleAI.model('gemini-2.5-flash-preview-tts'),
@@ -90,13 +82,10 @@ const voiceChatFlow = ai.defineFlow(
       prompt: text,
     });
 
-    if (!media || !media.url) {
-      throw new Error('Failed to generate audio response');
-    }
+    if (!media || !media.url) throw new Error('TTS failed');
 
     const pcmBase64 = media.url.substring(media.url.indexOf(',') + 1);
-    const audioBuffer = Buffer.from(pcmBase64, 'base64');
-    const wavBase64 = await toWav(audioBuffer);
+    const wavBase64 = await toWav(Buffer.from(pcmBase64, 'base64'));
 
     return {
       text,
