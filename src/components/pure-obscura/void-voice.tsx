@@ -17,7 +17,6 @@ export function VoidVoice() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
 
-  // Função para processar o envio da voz para a IA
   const handleVoiceSubmit = useCallback(async (text: string) => {
     if (!text || isProcessing) return;
     
@@ -44,21 +43,8 @@ export function VoidVoice() {
     }
   }, [isProcessing]);
 
-  // Limpeza total ao desmontar
-  useEffect(() => {
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.onstart = null;
-        recognitionRef.current.onresult = null;
-        recognitionRef.current.onerror = null;
-        recognitionRef.current.onend = null;
-        recognitionRef.current.abort();
-      }
-    };
-  }, []);
-
-  const startRecording = () => {
-    // 1. Destruição total da instância anterior se existir
+  // Função para limpar e destruir a instância atual
+  const cleanupRecognition = () => {
     if (recognitionRef.current) {
       try {
         recognitionRef.current.onstart = null;
@@ -66,66 +52,67 @@ export function VoidVoice() {
         recognitionRef.current.onerror = null;
         recognitionRef.current.onend = null;
         recognitionRef.current.abort();
-        recognitionRef.current = null;
       } catch (e) {
-        console.warn("Error cleaning up previous instance:", e);
+        // Ignora erros de abort
       }
+      recognitionRef.current = null;
     }
+  };
+
+  const startRecording = () => {
+    // 1. Limpeza total antes de qualquer coisa
+    cleanupRecognition();
 
     // 2. Verificação de suporte
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      setError("Seu navegador não suporta reconhecimento de voz.");
+      setError("Navegador não suporta reconhecimento de voz.");
       return;
     }
 
-    // 3. Criação de uma instância totalmente nova
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'pt-BR';
-    recognition.continuous = false;
-    recognition.interimResults = false;
-
-    // 4. Configuração dos eventos
-    recognition.onstart = () => {
-      setIsRecording(true);
-      setError(null);
-      setPlaybackError(false);
-    };
-
-    recognition.onresult = (event: any) => {
-      const text = event.results[0][0].transcript;
-      if (text) {
-        setTranscript(text);
-        handleVoiceSubmit(text);
-      }
-    };
-
-    recognition.onerror = (event: any) => {
-      console.error("Speech Recognition Error:", event.error);
-      if (event.error === 'not-allowed') {
-        setError("Microfone bloqueado. Verifique as permissões.");
-      } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
-        setError("Erro: " + event.error);
-      }
-      setIsRecording(false);
-    };
-
-    recognition.onend = () => {
-      setIsRecording(false);
-    };
-
-    recognitionRef.current = recognition;
-
-    // 5. Início com delay de hardware para garantir liberação
+    // 3. Pequeno delay para garantir que o hardware foi liberado
     setTimeout(() => {
       try {
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'pt-BR';
+        recognition.continuous = false;
+        recognition.interimResults = false;
+
+        recognition.onstart = () => {
+          setIsRecording(true);
+          setError(null);
+          setPlaybackError(false);
+        };
+
+        recognition.onresult = (event: any) => {
+          const text = event.results[0][0].transcript;
+          if (text) {
+            setTranscript(text);
+            handleVoiceSubmit(text);
+          }
+        };
+
+        recognition.onerror = (event: any) => {
+          if (event.error === 'not-allowed') {
+            setError("Permissão negada ao microfone.");
+          } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
+            setError("Erro: " + event.error);
+          }
+          setIsRecording(false);
+        };
+
+        recognition.onend = () => {
+          setIsRecording(false);
+        };
+
+        recognitionRef.current = recognition;
         recognition.start();
       } catch (e) {
-        console.error("Failed to start recognition:", e);
-        setError("Falha ao iniciar. Tente novamente.");
+        console.error("Failed to start speech recognition:", e);
+        setError("Falha ao abrir microfone. Tente novamente.");
         setIsRecording(false);
       }
-    }, 200); // Aumentado para 200ms para maior compatibilidade
+    }, 50);
   };
 
   const toggleRecording = () => {
@@ -135,13 +122,12 @@ export function VoidVoice() {
       if (recognitionRef.current) {
         recognitionRef.current.stop();
       }
-      return;
+    } else {
+      setTranscript("");
+      setAiResponse("");
+      setError(null);
+      startRecording();
     }
-
-    setTranscript("");
-    setAiResponse("");
-    setError(null);
-    startRecording();
   };
 
   const manualPlay = () => {
@@ -152,26 +138,31 @@ export function VoidVoice() {
     }
   };
 
+  // Limpeza ao desmontar componente
+  useEffect(() => {
+    return () => cleanupRecognition();
+  }, []);
+
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] gap-8">
-      {/* Resposta da IA */}
       <div className="text-center space-y-4 max-w-lg px-6 min-h-[160px] flex flex-col justify-end">
         {error && (
-          <div className="flex items-center gap-2 text-destructive/80 text-[10px] uppercase tracking-widest animate-bounce">
+          <div className="flex items-center justify-center gap-2 text-destructive/80 text-[10px] uppercase tracking-widest animate-bounce">
             <AlertCircle size={12} />
             {error}
           </div>
         )}
 
-        {transcript && (
-          <p className="text-muted-foreground/40 text-[10px] uppercase tracking-widest animate-pulse">
+        {transcript && !isProcessing && (
+          <p className="text-muted-foreground/40 text-[10px] uppercase tracking-widest">
             Você disse: "{transcript}"
           </p>
         )}
         
         {isProcessing ? (
-          <div className="flex justify-center py-4">
+          <div className="flex flex-col items-center gap-2 py-4">
             <Loader2 className="w-5 h-5 text-accent animate-spin" strokeWidth={1} />
+            <span className="text-[10px] uppercase tracking-[0.2em] text-accent/50">Analisando sua fala...</span>
           </div>
         ) : (
           aiResponse && (
@@ -193,7 +184,6 @@ export function VoidVoice() {
         )}
       </div>
 
-      {/* Botão de Microfone */}
       <div className="relative group">
         <button
           onClick={toggleRecording}
