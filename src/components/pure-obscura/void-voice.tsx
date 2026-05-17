@@ -1,9 +1,8 @@
-
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { voiceChat } from "@/ai/flows/voice-chat-flow";
-import { Mic, MicOff, Loader2, Volume2, AlertCircle } from "lucide-react";
+import { Mic, MicOff, Loader2, Volume2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function VoidVoice() {
@@ -16,7 +15,6 @@ export function VoidVoice() {
   const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
-    // Inicializar Web Speech API
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
@@ -35,7 +33,6 @@ export function VoidVoice() {
       };
 
       recognition.onerror = (event: any) => {
-        console.error("Erro no reconhecimento:", event.error);
         setIsRecording(false);
       };
 
@@ -52,12 +49,9 @@ export function VoidVoice() {
       const result = await voiceChat({ userMessage: text });
       setAiResponse(result.text);
       
-      // Reproduzir o áudio retornado
       if (audioRef.current) {
         audioRef.current.src = result.audioDataUri;
-        // O play() retorna uma Promise que pode ser rejeitada pelo navegador
         audioRef.current.play().catch((err) => {
-          console.warn("Reprodução automática bloqueada pelo navegador. Usuário deve clicar para ouvir.", err);
           setPlaybackError(true);
         });
       }
@@ -82,7 +76,6 @@ export function VoidVoice() {
       setPlaybackError(false);
       setIsRecording(true);
       
-      // "Acordar" o elemento de áudio em um gesto do usuário
       if (audioRef.current) {
         audioRef.current.load();
       }
@@ -90,7 +83,6 @@ export function VoidVoice() {
       try {
         recognitionRef.current.start();
       } catch (e) {
-        console.error("Erro ao iniciar gravação:", e);
         setIsRecording(false);
       }
     }
@@ -107,7 +99,7 @@ export function VoidVoice() {
       <div className="text-center space-y-4 max-w-lg px-6 min-h-[120px] flex flex-col justify-end">
         {transcript && (
           <p className="text-muted-foreground/40 text-xs uppercase tracking-widest animate-pulse">
-            Ouvindo: "{transcript}"
+            Você disse: "{transcript}"
           </p>
         )}
         
@@ -127,7 +119,7 @@ export function VoidVoice() {
                   className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-accent hover:text-accent-foreground transition-colors duration-300 py-2 px-4 border border-accent/20 rounded-full"
                 >
                   <Volume2 size={12} strokeWidth={1.5} />
-                  Clique para ouvir a resposta
+                  Clique para ouvir
                 </button>
               )}
             </div>
@@ -154,14 +146,13 @@ export function VoidVoice() {
           )}
         </button>
         
-        {/* Efeito visual de pulso quando gravando */}
         {isRecording && (
           <div className="absolute inset-0 rounded-full bg-accent/10 animate-ping" />
         )}
       </div>
 
       <p className="text-[10px] uppercase tracking-[0.4em] text-muted-foreground/30">
-        {isRecording ? "O Vazio escuta..." : "Toque no microfone para falar"}
+        {isRecording ? "Estou ouvindo..." : "Toque no microfone para falar"}
       </p>
 
       <audio ref={audioRef} className="hidden" />

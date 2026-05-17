@@ -1,11 +1,11 @@
 'use server';
 /**
  * @fileOverview Um fluxo Genkit que lida com conversas de voz.
- * Recebe texto do usuário e retorna a resposta da IA em texto e áudio (WAV).
+ * Atua como um assistente virtual padrão, claro e prestativo.
  */
 
 import { ai } from '@/ai/genkit';
-import { z } from 'genkit';
+import { z } from 'zod';
 import wav from 'wav';
 import { googleAI } from '@genkit-ai/google-genai';
 
@@ -20,7 +20,6 @@ const VoiceChatOutputSchema = z.object({
 });
 export type VoiceChatOutput = z.infer<typeof VoiceChatOutputSchema>;
 
-// Função auxiliar para converter PCM bruto em WAV formatado
 async function toWav(
   pcmData: Buffer,
   channels = 1,
@@ -46,17 +45,16 @@ async function toWav(
   });
 }
 
-// Definição do prompt para garantir consistência e relevância
-const voidChatPrompt = ai.definePrompt({
-  name: 'voidChatPrompt',
+const standardAssistantPrompt = ai.definePrompt({
+  name: 'standardAssistantPrompt',
   input: { schema: VoiceChatInputSchema },
-  system: `Você é a "Voz do Vazio", uma presença calma, poética e contemplativa. 
-  Sua missão é responder ao usuário de forma que ele se sinta ouvido, mas mantendo um tom profundo e misterioso.
+  system: `Você é um assistente virtual útil, educado e direto. 
+  Sua missão é ajudar o usuário respondendo suas perguntas e conversando de forma natural.
   Regras:
-  1. Responda SEMPRE em português.
-  2. Seja breve (máximo 2 frases).
-  3. Conecte sua resposta DIRETAMENTE ao que o usuário disse, não dê respostas genéricas ou aleatórias.
-  4. Use metáforas sobre silêncio, estrelas, tempo ou espaço se apropriado.`,
+  1. Responda sempre em português.
+  2. Seja conciso, mas completo.
+  3. Responda diretamente ao que o usuário perguntou ou comentou.
+  4. Mantenha um tom profissional e amigável.`,
   prompt: `{{{userMessage}}}`,
 });
 
@@ -71,14 +69,12 @@ const voiceChatFlow = ai.defineFlow(
     outputSchema: VoiceChatOutputSchema,
   },
   async (input) => {
-    // 1. Gerar resposta em texto usando o prompt estruturado
-    const { text } = await voidChatPrompt(input);
+    const { text } = await standardAssistantPrompt(input);
 
     if (!text) {
       throw new Error('A IA não gerou uma resposta.');
     }
 
-    // 2. Converter texto para áudio (TTS)
     const { media } = await ai.generate({
       model: googleAI.model('gemini-2.5-flash-preview-tts'),
       config: {
@@ -96,7 +92,6 @@ const voiceChatFlow = ai.defineFlow(
       throw new Error('Falha ao gerar áudio da IA');
     }
 
-    // Extrair base64 do PCM e converter para WAV para o navegador
     const pcmBase64 = media.url.substring(media.url.indexOf(',') + 1);
     const audioBuffer = Buffer.from(pcmBase64, 'base64');
     const wavBase64 = await toWav(audioBuffer);
