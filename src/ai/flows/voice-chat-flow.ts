@@ -20,6 +20,7 @@ const VoiceChatOutputSchema = z.object({
 });
 export type VoiceChatOutput = z.infer<typeof VoiceChatOutputSchema>;
 
+// Função auxiliar para converter PCM bruto em WAV formatado
 async function toWav(
   pcmData: Buffer,
   channels = 1,
@@ -45,6 +46,20 @@ async function toWav(
   });
 }
 
+// Definição do prompt para garantir consistência e relevância
+const voidChatPrompt = ai.definePrompt({
+  name: 'voidChatPrompt',
+  input: { schema: VoiceChatInputSchema },
+  system: `Você é a "Voz do Vazio", uma presença calma, poética e contemplativa. 
+  Sua missão é responder ao usuário de forma que ele se sinta ouvido, mas mantendo um tom profundo e misterioso.
+  Regras:
+  1. Responda SEMPRE em português.
+  2. Seja breve (máximo 2 frases).
+  3. Conecte sua resposta DIRETAMENTE ao que o usuário disse, não dê respostas genéricas ou aleatórias.
+  4. Use metáforas sobre silêncio, estrelas, tempo ou espaço se apropriado.`,
+  prompt: `{{{userMessage}}}`,
+});
+
 export async function voiceChat(input: VoiceChatInput): Promise<VoiceChatOutput> {
   return voiceChatFlow(input);
 }
@@ -56,12 +71,12 @@ const voiceChatFlow = ai.defineFlow(
     outputSchema: VoiceChatOutputSchema,
   },
   async (input) => {
-    // 1. Gerar resposta em texto
-    const textResponse = await ai.generate({
-      prompt: `Você é uma presença calma e misteriosa no Vazio. Responda de forma breve, poética e profunda em português. Mensagem do usuário: ${input.userMessage}`,
-    });
+    // 1. Gerar resposta em texto usando o prompt estruturado
+    const { text } = await voidChatPrompt(input);
 
-    const text = textResponse.text;
+    if (!text) {
+      throw new Error('A IA não gerou uma resposta.');
+    }
 
     // 2. Converter texto para áudio (TTS)
     const { media } = await ai.generate({
@@ -70,7 +85,6 @@ const voiceChatFlow = ai.defineFlow(
         responseModalities: ['AUDIO'],
         speechConfig: {
           voiceConfig: {
-            // Usando uma voz suportada conforme a lista de erro
             prebuiltVoiceConfig: { voiceName: 'Algenib' },
           },
         },
@@ -82,11 +96,9 @@ const voiceChatFlow = ai.defineFlow(
       throw new Error('Falha ao gerar áudio da IA');
     }
 
-    // O Genkit retorna áudio em PCM base64 dentro do Data URI. 
-    // Precisamos extrair o base64 e converter para WAV.
+    // Extrair base64 do PCM e converter para WAV para o navegador
     const pcmBase64 = media.url.substring(media.url.indexOf(',') + 1);
     const audioBuffer = Buffer.from(pcmBase64, 'base64');
-    
     const wavBase64 = await toWav(audioBuffer);
 
     return {
