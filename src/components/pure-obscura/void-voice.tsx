@@ -1,9 +1,17 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { voiceChat } from "@/ai/flows/voice-chat-flow";
-import { Mic, MicOff, Loader2, Volume2 } from "lucide-react";
+import { Mic, MicOff, Loader2, Volume2, MessageSquare, History, Settings, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  Menubar,
+  MenubarContent,
+  MenubarItem,
+  MenubarMenu,
+  MenubarSeparator,
+  MenubarTrigger,
+} from "@/components/ui/menubar";
 
 export function VoidVoice() {
   const [isRecording, setIsRecording] = useState(false);
@@ -95,8 +103,9 @@ export function VoidVoice() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] gap-12">
-      <div className="text-center space-y-4 max-w-lg px-6 min-h-[120px] flex flex-col justify-end">
+    <div className="flex flex-col items-center justify-center min-h-[60vh] gap-8">
+      {/* Área de Resposta da IA */}
+      <div className="text-center space-y-4 max-w-lg px-6 min-h-[140px] flex flex-col justify-end">
         {transcript && (
           <p className="text-muted-foreground/40 text-xs uppercase tracking-widest animate-pulse">
             Você disse: "{transcript}"
@@ -127,6 +136,44 @@ export function VoidVoice() {
         )}
       </div>
 
+      {/* Menu Superior ao Play */}
+      <div className="z-20">
+        <Menubar className="bg-transparent border-border/20 h-10 px-2 rounded-full backdrop-blur-sm">
+          <MenubarMenu>
+            <MenubarTrigger className="text-xs uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors cursor-pointer focus:bg-accent/10 data-[state=open]:bg-accent/10">
+              Conversa
+            </MenubarTrigger>
+            <MenubarContent className="bg-background/95 backdrop-blur-md border-border/20">
+              <MenubarItem className="gap-2 text-xs">
+                <MessageSquare size={14} strokeWidth={1.5} /> Novo Chat
+              </MenubarItem>
+              <MenubarItem className="gap-2 text-xs">
+                <History size={14} strokeWidth={1.5} /> Histórico
+              </MenubarItem>
+              <MenubarSeparator className="bg-border/20" />
+              <MenubarItem className="gap-2 text-xs">
+                <Settings size={14} strokeWidth={1.5} /> Preferências
+              </MenubarItem>
+            </MenubarContent>
+          </MenubarMenu>
+          
+          <MenubarMenu>
+            <MenubarTrigger className="text-xs uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors cursor-pointer focus:bg-accent/10 data-[state=open]:bg-accent/10">
+              Sobre
+            </MenubarTrigger>
+            <MenubarContent className="bg-background/95 backdrop-blur-md border-border/20">
+              <MenubarItem className="gap-2 text-xs">
+                <Info size={14} strokeWidth={1.5} /> Informações
+              </MenubarItem>
+              <MenubarItem className="gap-2 text-xs">
+                Ajuda
+              </MenubarItem>
+            </MenubarContent>
+          </MenubarMenu>
+        </Menubar>
+      </div>
+
+      {/* Botão de Microfone (Play) */}
       <div className="relative group">
         <button
           onClick={toggleRecording}
@@ -152,7 +199,7 @@ export function VoidVoice() {
       </div>
 
       <p className="text-[10px] uppercase tracking-[0.4em] text-muted-foreground/30">
-        {isRecording ? "Estou ouvindo..." : "Toque no microfone para falar"}
+        {isRecording ? "Estou ouvindo..." : "Toque para falar"}
       </p>
 
       <audio ref={audioRef} className="hidden" />
