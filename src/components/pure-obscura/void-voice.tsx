@@ -35,7 +35,9 @@ export function VoidVoice() {
       };
 
       recognition.onerror = (event: any) => {
-        console.error("Speech recognition error:", event.error);
+        if (event.error !== 'no-speech' && event.error !== 'aborted') {
+          console.error("Speech recognition error:", event.error);
+        }
         setIsRecording(false);
       };
 
@@ -48,7 +50,7 @@ export function VoidVoice() {
 
     return () => {
       if (recognitionRef.current) {
-        recognitionRef.current.stop();
+        recognitionRef.current.abort();
       }
     };
   }, []);
@@ -84,23 +86,27 @@ export function VoidVoice() {
     }
 
     if (isRecording) {
+      // Forçar parada imediata
       recognitionRef.current.stop();
     } else {
+      // Limpar estados anteriores
       setTranscript("");
       setAiResponse("");
       
-      // Preparar o áudio para evitar bloqueio de autoplay
-      if (audioRef.current) {
-        audioRef.current.load();
-      }
-      
+      // Garantir que não há nada rodando antes de começar
       try {
-        recognitionRef.current.start();
+        recognitionRef.current.abort(); // Interrompe qualquer sessão fantasma
+        
+        // Pequeno timeout para garantir que o hardware do microfone foi liberado pelo navegador
+        setTimeout(() => {
+          try {
+            recognitionRef.current.start();
+          } catch (startError) {
+            console.warn("Could not start recognition, it might already be active.");
+          }
+        }, 100);
       } catch (e) {
-        console.error("Failed to start recognition:", e);
-        // Se já estiver rodando, tentamos parar primeiro para a próxima vez funcionar
-        recognitionRef.current.stop();
-        setIsRecording(false);
+        console.error("Failed to reset recognition:", e);
       }
     }
   };
