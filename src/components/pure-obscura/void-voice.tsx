@@ -17,9 +17,7 @@ export function VoidVoice() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
 
-  // Referência para a função de envio para evitar closures obsoletas nos eventos de voz
-  const handleVoiceSubmitRef = useRef<(text: string) => Promise<void>>(async () => {});
-
+  // Função para processar o envio da voz para a IA
   const handleVoiceSubmit = useCallback(async (text: string) => {
     if (!text || isProcessing) return;
     
@@ -46,22 +44,21 @@ export function VoidVoice() {
     }
   }, [isProcessing]);
 
-  // Sincroniza a referência da função de envio
-  useEffect(() => {
-    handleVoiceSubmitRef.current = handleVoiceSubmit;
-  }, [handleVoiceSubmit]);
-
-  // Limpeza profunda ao desmontar o componente
+  // Limpeza total ao desmontar
   useEffect(() => {
     return () => {
       if (recognitionRef.current) {
+        recognitionRef.current.onstart = null;
+        recognitionRef.current.onresult = null;
+        recognitionRef.current.onerror = null;
+        recognitionRef.current.onend = null;
         recognitionRef.current.abort();
       }
     };
   }, []);
 
   const startRecording = () => {
-    // 1. Limpeza total de qualquer instância anterior
+    // 1. Destruição total da instância anterior se existir
     if (recognitionRef.current) {
       try {
         recognitionRef.current.onstart = null;
@@ -69,8 +66,9 @@ export function VoidVoice() {
         recognitionRef.current.onerror = null;
         recognitionRef.current.onend = null;
         recognitionRef.current.abort();
+        recognitionRef.current = null;
       } catch (e) {
-        console.warn("Error cleaning up previous recognition:", e);
+        console.warn("Error cleaning up previous instance:", e);
       }
     }
 
@@ -81,13 +79,13 @@ export function VoidVoice() {
       return;
     }
 
-    // 3. Nova instância limpa
+    // 3. Criação de uma instância totalmente nova
     const recognition = new SpeechRecognition();
     recognition.lang = 'pt-BR';
     recognition.continuous = false;
     recognition.interimResults = false;
 
-    // 4. Handlers de eventos
+    // 4. Configuração dos eventos
     recognition.onstart = () => {
       setIsRecording(true);
       setError(null);
@@ -98,7 +96,7 @@ export function VoidVoice() {
       const text = event.results[0][0].transcript;
       if (text) {
         setTranscript(text);
-        handleVoiceSubmitRef.current(text);
+        handleVoiceSubmit(text);
       }
     };
 
@@ -118,7 +116,7 @@ export function VoidVoice() {
 
     recognitionRef.current = recognition;
 
-    // 5. Início com pequeno delay para garantir que o hardware foi liberado
+    // 5. Início com delay de hardware para garantir liberação
     setTimeout(() => {
       try {
         recognition.start();
@@ -127,7 +125,7 @@ export function VoidVoice() {
         setError("Falha ao iniciar. Tente novamente.");
         setIsRecording(false);
       }
-    }, 100);
+    }, 200); // Aumentado para 200ms para maior compatibilidade
   };
 
   const toggleRecording = () => {
