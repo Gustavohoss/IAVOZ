@@ -1,4 +1,3 @@
-
 'use server';
 /**
  * @fileOverview Um fluxo Genkit que lida com conversas de voz.
@@ -71,7 +70,8 @@ const voiceChatFlow = ai.defineFlow(
         responseModalities: ['AUDIO'],
         speechConfig: {
           voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Pherkad' }, // Uma voz profunda
+            // Usando uma voz suportada conforme a lista de erro
+            prebuiltVoiceConfig: { voiceName: 'Algenib' },
           },
         },
       },
