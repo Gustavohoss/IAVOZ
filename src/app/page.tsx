@@ -1,10 +1,9 @@
-
 "use client";
 
 import { useState } from "react";
 import { VoidVoice } from "@/components/pure-obscura/void-voice";
 import { StealthControls } from "@/components/pure-obscura/stealth-controls";
-import { Mic, MessageSquare, Settings, Info, ChevronRight } from "lucide-react";
+import { Mic, MessageSquare, Settings, GraduationCap, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function Home() {
@@ -22,7 +21,7 @@ export default function Home() {
               Obscura
             </h1>
             <p className="text-muted-foreground/40 text-[10px] uppercase tracking-[0.3em]">
-              Assistente Virtual Inteligente
+              AI English Tutor
             </p>
           </div>
 
@@ -32,8 +31,8 @@ export default function Home() {
               className="group flex items-center justify-between p-4 bg-primary/5 hover:bg-accent/10 border border-white/5 hover:border-accent/20 transition-all duration-500 rounded-lg"
             >
               <div className="flex items-center gap-4">
-                <Mic size={18} className="text-muted-foreground group-hover:text-accent transition-colors" strokeWidth={1.5} />
-                <span className="text-xs uppercase tracking-widest text-muted-foreground group-hover:text-primary transition-colors">Conversar</span>
+                <GraduationCap size={18} className="text-muted-foreground group-hover:text-accent transition-colors" strokeWidth={1.5} />
+                <span className="text-xs uppercase tracking-widest text-muted-foreground group-hover:text-primary transition-colors">Start Class</span>
               </div>
               <ChevronRight size={14} className="text-muted-foreground/20 group-hover:text-accent transition-all" />
             </button>
@@ -41,18 +40,18 @@ export default function Home() {
             <button className="group flex items-center justify-between p-4 bg-primary/5 hover:bg-primary/10 border border-white/5 transition-all duration-500 rounded-lg opacity-50 cursor-not-allowed">
               <div className="flex items-center gap-4">
                 <MessageSquare size={18} className="text-muted-foreground" strokeWidth={1.5} />
-                <span className="text-xs uppercase tracking-widest text-muted-foreground">Mensagens</span>
+                <span className="text-xs uppercase tracking-widest text-muted-foreground">Exercises</span>
               </div>
             </button>
 
             <div className="grid grid-cols-2 gap-3 mt-2">
               <button className="flex flex-col items-center gap-3 p-4 bg-primary/5 hover:bg-primary/10 border border-white/5 transition-all duration-500 rounded-lg">
                 <Settings size={16} className="text-muted-foreground/60" strokeWidth={1.5} />
-                <span className="text-[9px] uppercase tracking-widest text-muted-foreground/60">Ajustes</span>
+                <span className="text-[9px] uppercase tracking-widest text-muted-foreground/60">Level</span>
               </button>
               <button className="flex flex-col items-center gap-3 p-4 bg-primary/5 hover:bg-primary/10 border border-white/5 transition-all duration-500 rounded-lg">
-                <Info size={16} className="text-muted-foreground/60" strokeWidth={1.5} />
-                <span className="text-[9px] uppercase tracking-widest text-muted-foreground/60">Sobre</span>
+                <Mic size={16} className="text-muted-foreground/60" strokeWidth={1.5} />
+                <span className="text-[9px] uppercase tracking-widest text-muted-foreground/60">Voice</span>
               </button>
             </div>
           </nav>
@@ -64,7 +63,7 @@ export default function Home() {
             className="absolute top-12 left-12 text-[10px] uppercase tracking-widest text-muted-foreground/40 hover:text-accent transition-colors duration-500 flex items-center gap-2"
           >
             <ChevronRight size={12} className="rotate-180" />
-            Voltar ao Menu
+            Back to Menu
           </button>
           
           <VoidVoice />

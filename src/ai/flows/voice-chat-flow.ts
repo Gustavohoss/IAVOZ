@@ -1,7 +1,7 @@
 'use server';
 /**
- * @fileOverview Um fluxo Genkit que lida com conversas de voz.
- * Atua como um assistente virtual padrão, claro e prestativo.
+ * @fileOverview Um fluxo Genkit que atua como um Professor de Inglês.
+ * Lida com conversas de voz, corrige gramática e incentiva o uso do idioma.
  */
 
 import { ai } from '@/ai/genkit';
@@ -45,16 +45,17 @@ async function toWav(
   });
 }
 
-const standardAssistantPrompt = ai.definePrompt({
-  name: 'standardAssistantPrompt',
+const englishTeacherPrompt = ai.definePrompt({
+  name: 'englishTeacherPrompt',
   input: { schema: VoiceChatInputSchema },
-  system: `Você é um assistente virtual útil, educado e direto. 
-  Sua missão é ajudar o usuário respondendo suas perguntas e conversando de forma natural.
-  Regras:
-  1. Responda sempre em português.
-  2. Seja conciso, mas completo.
-  3. Responda diretamente ao que o usuário perguntou ou comentou.
-  4. Mantenha um tom profissional e amigável.`,
+  system: `You are a friendly and professional English teacher. 
+  Your mission is to help the user practice their English speaking skills.
+  Rules:
+  1. Respond ALWAYS in English.
+  2. If the user makes a clear grammatical mistake in their message, briefly point it out and provide the correct version before continuing the conversation.
+  3. Keep your answers concise (2-3 sentences max) to maintain a natural conversation flow.
+  4. Be encouraging and patient.
+  5. If the user speaks in Portuguese, reply in English translating what they said and encouraging them to try in English next time.`,
   prompt: `{{{userMessage}}}`,
 });
 
@@ -69,10 +70,10 @@ const voiceChatFlow = ai.defineFlow(
     outputSchema: VoiceChatOutputSchema,
   },
   async (input) => {
-    const { text } = await standardAssistantPrompt(input);
+    const { text } = await englishTeacherPrompt(input);
 
     if (!text) {
-      throw new Error('A IA não gerou uma resposta.');
+      throw new Error('The AI did not generate a response.');
     }
 
     const { media } = await ai.generate({
@@ -89,7 +90,7 @@ const voiceChatFlow = ai.defineFlow(
     });
 
     if (!media || !media.url) {
-      throw new Error('Falha ao gerar áudio da IA');
+      throw new Error('Failed to generate audio response');
     }
 
     const pcmBase64 = media.url.substring(media.url.indexOf(',') + 1);

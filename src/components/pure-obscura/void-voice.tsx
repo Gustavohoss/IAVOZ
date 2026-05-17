@@ -1,18 +1,9 @@
-
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
 import { voiceChat } from "@/ai/flows/voice-chat-flow";
-import { Mic, MicOff, Loader2, Volume2, MessageSquare, History, Settings, Info } from "lucide-react";
+import { Mic, Loader2, Volume2, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  Menubar,
-  MenubarContent,
-  MenubarItem,
-  MenubarMenu,
-  MenubarSeparator,
-  MenubarTrigger,
-} from "@/components/ui/menubar";
 
 export function VoidVoice() {
   const [isRecording, setIsRecording] = useState(false);
@@ -27,7 +18,8 @@ export function VoidVoice() {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
-      recognition.lang = 'pt-BR';
+      // Alterado para en-US para melhor reconhecimento do aluno praticando inglês
+      recognition.lang = 'en-US';
       recognition.continuous = false;
       recognition.interimResults = false;
 
@@ -65,7 +57,7 @@ export function VoidVoice() {
         });
       }
     } catch (error) {
-      console.error("Erro ao processar voz:", error);
+      console.error("Error processing voice:", error);
     } finally {
       setIsProcessing(false);
     }
@@ -73,7 +65,7 @@ export function VoidVoice() {
 
   const toggleRecording = () => {
     if (!recognitionRef.current) {
-      alert("Seu navegador não suporta reconhecimento de voz.");
+      alert("Your browser does not support speech recognition.");
       return;
     }
 
@@ -105,11 +97,11 @@ export function VoidVoice() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] gap-8">
-      {/* Área de Resposta da IA */}
-      <div className="text-center space-y-4 max-w-lg px-6 min-h-[140px] flex flex-col justify-end">
+      {/* IA Response Area */}
+      <div className="text-center space-y-4 max-w-lg px-6 min-h-[160px] flex flex-col justify-end">
         {transcript && (
-          <p className="text-muted-foreground/40 text-xs uppercase tracking-widest animate-pulse">
-            Você disse: "{transcript}"
+          <p className="text-muted-foreground/40 text-[10px] uppercase tracking-widest animate-pulse">
+            You said: "{transcript}"
           </p>
         )}
         
@@ -129,7 +121,7 @@ export function VoidVoice() {
                   className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-accent hover:text-accent-foreground transition-colors duration-300 py-2 px-4 border border-accent/20 rounded-full"
                 >
                   <Volume2 size={12} strokeWidth={1.5} />
-                  Clique para ouvir
+                  Listen Again
                 </button>
               )}
             </div>
@@ -137,7 +129,7 @@ export function VoidVoice() {
         )}
       </div>
 
-      {/* Botão de Microfone (Play) */}
+      {/* Microphone Button */}
       <div className="relative group">
         <button
           onClick={toggleRecording}
@@ -151,19 +143,18 @@ export function VoidVoice() {
           )}
         >
           {isRecording ? (
-            <Mic className="w-10 h-10 text-accent animate-pulse" strokeWidth={1} />
+            <div className="relative flex items-center justify-center">
+              <div className="absolute w-16 h-16 rounded-full border border-accent/50 animate-ping" />
+              <Mic className="w-10 h-10 text-accent" strokeWidth={1} />
+            </div>
           ) : (
-            <MicOff className="w-10 h-10 text-muted-foreground/30 group-hover:text-accent/50 transition-colors" strokeWidth={1} />
+            <Mic className="w-10 h-10 text-muted-foreground/30 group-hover:text-accent/50 transition-colors" strokeWidth={1} />
           )}
         </button>
-        
-        {isRecording && (
-          <div className="absolute inset-0 rounded-full bg-accent/10 animate-ping" />
-        )}
       </div>
 
       <p className="text-[10px] uppercase tracking-[0.4em] text-muted-foreground/30">
-        {isRecording ? "Estou ouvindo..." : "Toque para falar"}
+        {isRecording ? "Listening..." : "Tap to Speak English"}
       </p>
 
       <audio ref={audioRef} className="hidden" />
