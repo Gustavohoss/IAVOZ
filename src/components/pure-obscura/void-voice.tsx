@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
@@ -136,60 +137,23 @@ export function VoidVoice() {
         )}
       </div>
 
-      {/* Menu Superior ao Play */}
-      <div className="z-20">
-        <Menubar className="bg-transparent border-border/20 h-10 px-2 rounded-full backdrop-blur-sm">
-          <MenubarMenu>
-            <MenubarTrigger className="text-xs uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors cursor-pointer focus:bg-accent/10 data-[state=open]:bg-accent/10">
-              Conversa
-            </MenubarTrigger>
-            <MenubarContent className="bg-background/95 backdrop-blur-md border-border/20">
-              <MenubarItem className="gap-2 text-xs">
-                <MessageSquare size={14} strokeWidth={1.5} /> Novo Chat
-              </MenubarItem>
-              <MenubarItem className="gap-2 text-xs">
-                <History size={14} strokeWidth={1.5} /> Histórico
-              </MenubarItem>
-              <MenubarSeparator className="bg-border/20" />
-              <MenubarItem className="gap-2 text-xs">
-                <Settings size={14} strokeWidth={1.5} /> Preferências
-              </MenubarItem>
-            </MenubarContent>
-          </MenubarMenu>
-          
-          <MenubarMenu>
-            <MenubarTrigger className="text-xs uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors cursor-pointer focus:bg-accent/10 data-[state=open]:bg-accent/10">
-              Sobre
-            </MenubarTrigger>
-            <MenubarContent className="bg-background/95 backdrop-blur-md border-border/20">
-              <MenubarItem className="gap-2 text-xs">
-                <Info size={14} strokeWidth={1.5} /> Informações
-              </MenubarItem>
-              <MenubarItem className="gap-2 text-xs">
-                Ajuda
-              </MenubarItem>
-            </MenubarContent>
-          </MenubarMenu>
-        </Menubar>
-      </div>
-
       {/* Botão de Microfone (Play) */}
       <div className="relative group">
         <button
           onClick={toggleRecording}
           disabled={isProcessing}
           className={cn(
-            "relative z-10 w-24 h-24 rounded-full flex items-center justify-center transition-all duration-700",
+            "relative z-10 w-32 h-32 rounded-full flex items-center justify-center transition-all duration-700",
             isRecording 
-              ? "bg-accent/20 scale-110 shadow-[0_0_50px_rgba(var(--accent),0.2)]" 
-              : "bg-primary/5 hover:bg-primary/10",
+              ? "bg-accent/20 scale-110 shadow-[0_0_60px_rgba(var(--accent),0.2)]" 
+              : "bg-primary/5 hover:bg-primary/10 border border-white/5 hover:border-accent/30",
             isProcessing && "opacity-50 cursor-not-allowed"
           )}
         >
           {isRecording ? (
-            <Mic className="w-8 h-8 text-accent animate-pulse" strokeWidth={1} />
+            <Mic className="w-10 h-10 text-accent animate-pulse" strokeWidth={1} />
           ) : (
-            <MicOff className="w-8 h-8 text-muted-foreground/40" strokeWidth={1} />
+            <MicOff className="w-10 h-10 text-muted-foreground/30 group-hover:text-accent/50 transition-colors" strokeWidth={1} />
           )}
         </button>
         
