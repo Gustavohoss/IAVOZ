@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
@@ -12,14 +11,18 @@ export function VoidVoice() {
   const [isAutoMode, setIsAutoMode] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [aiResponse, setAiResponse] = useState("");
-  const [playbackError, setPlaybackError] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
   const isPlayingRef = useRef(false);
+  const autoModeRef = useRef(false); // Ref para evitar fechamentos de escopo (stale closures)
 
-  // Limpeza total da instância de reconhecimento
+  // Sincroniza a ref com o estado
+  useEffect(() => {
+    autoModeRef.current = isAutoMode;
+  }, [isAutoMode]);
+
   const cleanupRecognition = useCallback(() => {
     if (recognitionRef.current) {
       try {
@@ -30,7 +33,7 @@ export function VoidVoice() {
         recognitionRef.current.onspeechstart = null;
         recognitionRef.current.abort();
       } catch (e) {
-        // Silencia erros de abort
+        // Ignora erros de abort
       }
       recognitionRef.current = null;
     }
@@ -44,7 +47,68 @@ export function VoidVoice() {
     }
   }, []);
 
-  const handleVoiceSubmit = useCallback(async (text: string) => {
+  const startRecording = useCallback(() => {
+    cleanupRecognition();
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setError("Browser does not support speech recognition.");
+      return;
+    }
+
+    // Pequeno delay para garantir que o hardware do microfone foi liberado pela sessão anterior
+    setTimeout(() => {
+      try {
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'pt-BR'; // Mantido pt-BR para entender o usuário flexivelmente
+        recognition.continuous = false;
+        recognition.interimResults = false;
+
+        recognition.onstart = () => {
+          setIsRecording(true);
+          setError(null);
+        };
+
+        recognition.onspeechstart = () => {
+          if (isPlayingRef.current) {
+            stopAudio();
+          }
+        };
+
+        recognition.onresult = (event: any) => {
+          const text = event.results[0][0].transcript;
+          if (text) {
+            setTranscript(text);
+            handleVoiceSubmit(text);
+          }
+        };
+
+        recognition.onerror = (event: any) => {
+          if (event.error === 'not-allowed') {
+            setError("Microphone permission denied.");
+            setIsAutoMode(false);
+          } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
+            setError("Error: " + event.error);
+          }
+          setIsRecording(false);
+        };
+
+        recognition.onend = () => {
+          setIsRecording(false);
+          // Se o áudio não estiver tocando e o modo auto estiver on, e não estivermos processando...
+          // Mas normalmente o onend acontece ANTES do áudio da IA começar.
+        };
+
+        recognitionRef.current = recognition;
+        recognition.start();
+      } catch (e) {
+        console.error("Failed to start speech recognition:", e);
+        setIsRecording(false);
+      }
+    }, 200);
+  }, [cleanupRecognition, stopAudio]);
+
+  const handleVoiceSubmit = async (text: string) => {
     if (!text || isProcessing) return;
     
     setIsProcessing(true);
@@ -63,88 +127,30 @@ export function VoidVoice() {
             isPlayingRef.current = true;
           })
           .catch((err) => {
-            console.warn("Autoplay blocked.");
-            setPlaybackError(true);
+            console.warn("Autoplay blocked or playback error.");
             isPlayingRef.current = false;
+            // Se o autoplay falhar, precisamos reabrir o mic se estiver no modo auto
+            if (autoModeRef.current) {
+              startRecording();
+            }
           });
       }
     } catch (err) {
       console.error("Error processing voice:", err);
-      setError("Houve um erro ao processar sua fala. Tente novamente.");
-      setIsAutoMode(false); // Para o modo auto em caso de erro crítico
+      setError("Houve um erro ao processar sua fala.");
+      setIsAutoMode(false);
     } finally {
       setIsProcessing(false);
     }
-  }, [isProcessing, stopAudio]);
-
-  const startRecording = useCallback(() => {
-    cleanupRecognition();
-
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setError("Navegador não suporta reconhecimento de voz.");
-      return;
-    }
-
-    setTimeout(() => {
-      try {
-        const recognition = new SpeechRecognition();
-        recognition.lang = 'pt-BR';
-        recognition.continuous = false;
-        recognition.interimResults = false;
-
-        recognition.onstart = () => {
-          setIsRecording(true);
-          setError(null);
-        };
-
-        // Lógica de Interrupção: Se o usuário começar a falar, para o áudio da IA
-        recognition.onspeechstart = () => {
-          if (isPlayingRef.current) {
-            stopAudio();
-          }
-        };
-
-        recognition.onresult = (event: any) => {
-          const text = event.results[0][0].transcript;
-          if (text) {
-            setTranscript(text);
-            handleVoiceSubmit(text);
-          }
-        };
-
-        recognition.onerror = (event: any) => {
-          if (event.error === 'not-allowed') {
-            setError("Permissão negada ao microfone.");
-            setIsAutoMode(false);
-          } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
-            setError("Erro: " + event.error);
-          }
-          setIsRecording(false);
-        };
-
-        recognition.onend = () => {
-          setIsRecording(false);
-        };
-
-        recognitionRef.current = recognition;
-        recognition.start();
-      } catch (e) {
-        console.error("Failed to start speech recognition:", e);
-        setIsRecording(false);
-      }
-    }, 100);
-  }, [cleanupRecognition, handleVoiceSubmit, stopAudio]);
+  };
 
   const toggleSession = () => {
     if (isAutoMode || isRecording || isProcessing) {
-      // Para tudo
       setIsAutoMode(false);
       cleanupRecognition();
       stopAudio();
       setIsRecording(false);
     } else {
-      // Inicia modo mãos livres
       setIsAutoMode(true);
       setTranscript("");
       setAiResponse("");
@@ -152,25 +158,29 @@ export function VoidVoice() {
     }
   };
 
-  // Monitora o fim do áudio para reabrir o microfone automaticamente
+  // Efeito para monitorar o fim do áudio e reiniciar a escuta
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
     const handleAudioEnded = () => {
       isPlayingRef.current = false;
-      if (isAutoMode && !isProcessing && !isRecording) {
+      // Garante que o microfone só abre se o modo automático ainda estiver ativo
+      if (autoModeRef.current) {
         startRecording();
       }
     };
 
     audio.addEventListener('ended', handleAudioEnded);
     return () => audio.removeEventListener('ended', handleAudioEnded);
-  }, [isAutoMode, isProcessing, isRecording, startRecording]);
+  }, [startRecording]);
 
   useEffect(() => {
-    return () => cleanupRecognition();
-  }, [cleanupRecognition]);
+    return () => {
+      cleanupRecognition();
+      stopAudio();
+    };
+  }, [cleanupRecognition, stopAudio]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] gap-8">
@@ -182,16 +192,16 @@ export function VoidVoice() {
           </div>
         )}
 
-        {transcript && !isProcessing && (
+        {transcript && (
           <p className="text-muted-foreground/40 text-[10px] uppercase tracking-widest">
-            Você: "{transcript}"
+            You: "{transcript}"
           </p>
         )}
         
         {isProcessing ? (
           <div className="flex flex-col items-center gap-2 py-4">
             <Loader2 className="w-5 h-5 text-accent animate-spin" strokeWidth={1} />
-            <span className="text-[10px] uppercase tracking-[0.2em] text-accent/50">O professor está pensando...</span>
+            <span className="text-[10px] uppercase tracking-[0.2em] text-accent/50">Professor is thinking...</span>
           </div>
         ) : (
           aiResponse && (
@@ -213,6 +223,8 @@ export function VoidVoice() {
               ? "bg-accent/20 scale-110 shadow-[0_0_60px_rgba(168,85,247,0.3)]" 
               : isProcessing 
               ? "bg-primary/10 animate-pulse"
+              : isAutoMode
+              ? "bg-accent/10 border border-accent/20"
               : "bg-primary/5 hover:bg-primary/10 border border-white/5 hover:border-accent/30",
           )}
         >
@@ -231,10 +243,10 @@ export function VoidVoice() {
 
       <div className="flex flex-col items-center gap-2">
         <p className="text-[10px] uppercase tracking-[0.4em] text-muted-foreground/30">
-          {isRecording ? "Pode falar, estou ouvindo" : isProcessing ? "Processando..." : isAutoMode ? "Modo Automático Ativo" : "Toque para iniciar a aula"}
+          {isRecording ? "Listening..." : isProcessing ? "Processing..." : isAutoMode ? "Auto Class Mode" : "Tap to start learning"}
         </p>
-        {isAutoMode && (
-          <span className="text-[8px] text-accent/40 uppercase tracking-widest">A IA ouvirá você automaticamente</span>
+        {isAutoMode && !isRecording && !isProcessing && (
+          <span className="text-[8px] text-accent/40 uppercase tracking-widest animate-pulse">Waiting for your voice</span>
         )}
       </div>
 
