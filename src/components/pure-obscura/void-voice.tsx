@@ -17,7 +17,7 @@ export function VoidVoice() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
 
-  // Mantém uma referência da função de envio para evitar closures obsoletas
+  // Referência para a função de envio para evitar closures obsoletas nos eventos de voz
   const handleVoiceSubmitRef = useRef<(text: string) => Promise<void>>(async () => {});
 
   const handleVoiceSubmit = useCallback(async (text: string) => {
@@ -46,81 +46,104 @@ export function VoidVoice() {
     }
   }, [isProcessing]);
 
-  // Atualiza a referência sempre que a função mudar
+  // Sincroniza a referência da função de envio
   useEffect(() => {
     handleVoiceSubmitRef.current = handleVoiceSubmit;
   }, [handleVoiceSubmit]);
 
-  const initRecognition = useCallback(() => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    
-    if (!SpeechRecognition) {
-      setError("Seu navegador não suporta reconhecimento de voz.");
-      return null;
+  // Limpeza profunda ao desmontar o componente
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.abort();
+      }
+    };
+  }, []);
+
+  const startRecording = () => {
+    // 1. Limpeza total de qualquer instância anterior
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.onstart = null;
+        recognitionRef.current.onresult = null;
+        recognitionRef.current.onerror = null;
+        recognitionRef.current.onend = null;
+        recognitionRef.current.abort();
+      } catch (e) {
+        console.warn("Error cleaning up previous recognition:", e);
+      }
     }
 
+    // 2. Verificação de suporte
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setError("Seu navegador não suporta reconhecimento de voz.");
+      return;
+    }
+
+    // 3. Nova instância limpa
     const recognition = new SpeechRecognition();
-    recognition.lang = 'pt-BR'; // Reconhece português para o professor entender o aluno
+    recognition.lang = 'pt-BR';
     recognition.continuous = false;
     recognition.interimResults = false;
 
+    // 4. Handlers de eventos
     recognition.onstart = () => {
       setIsRecording(true);
-      setPlaybackError(false);
       setError(null);
+      setPlaybackError(false);
     };
 
     recognition.onresult = (event: any) => {
       const text = event.results[0][0].transcript;
-      setTranscript(text);
-      handleVoiceSubmitRef.current(text);
+      if (text) {
+        setTranscript(text);
+        handleVoiceSubmitRef.current(text);
+      }
     };
 
     recognition.onerror = (event: any) => {
-      setIsRecording(false);
+      console.error("Speech Recognition Error:", event.error);
       if (event.error === 'not-allowed') {
-        setError("Permissão de microfone negada.");
+        setError("Microfone bloqueado. Verifique as permissões.");
       } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
-        setError("Erro no microfone: " + event.error);
+        setError("Erro: " + event.error);
       }
+      setIsRecording(false);
     };
 
     recognition.onend = () => {
       setIsRecording(false);
     };
 
-    return recognition;
-  }, []);
+    recognitionRef.current = recognition;
+
+    // 5. Início com pequeno delay para garantir que o hardware foi liberado
+    setTimeout(() => {
+      try {
+        recognition.start();
+      } catch (e) {
+        console.error("Failed to start recognition:", e);
+        setError("Falha ao iniciar. Tente novamente.");
+        setIsRecording(false);
+      }
+    }, 100);
+  };
 
   const toggleRecording = () => {
     if (isProcessing) return;
 
-    // Se já estiver gravando, para
-    if (isRecording && recognitionRef.current) {
-      recognitionRef.current.stop();
+    if (isRecording) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
       return;
     }
 
-    // Limpa estados
     setTranscript("");
     setAiResponse("");
     setError(null);
-
-    // Reinicia a instância para garantir que não haja estados de erro pendentes
-    if (recognitionRef.current) {
-      try { recognitionRef.current.abort(); } catch(e) {}
-    }
-
-    recognitionRef.current = initRecognition();
-    
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.start();
-      } catch (startError) {
-        console.error("Could not start recognition:", startError);
-        setError("Falha ao iniciar microfone. Tente recarregar a página.");
-      }
-    }
+    startRecording();
   };
 
   const manualPlay = () => {
@@ -133,7 +156,7 @@ export function VoidVoice() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] gap-8">
-      {/* IA Response Area */}
+      {/* Resposta da IA */}
       <div className="text-center space-y-4 max-w-lg px-6 min-h-[160px] flex flex-col justify-end">
         {error && (
           <div className="flex items-center gap-2 text-destructive/80 text-[10px] uppercase tracking-widest animate-bounce">
@@ -172,7 +195,7 @@ export function VoidVoice() {
         )}
       </div>
 
-      {/* Microphone Button */}
+      {/* Botão de Microfone */}
       <div className="relative group">
         <button
           onClick={toggleRecording}
@@ -180,7 +203,7 @@ export function VoidVoice() {
           className={cn(
             "relative z-10 w-32 h-32 rounded-full flex items-center justify-center transition-all duration-700",
             isRecording 
-              ? "bg-accent/20 scale-110 shadow-[0_0_60px_rgba(var(--accent),0.2)]" 
+              ? "bg-accent/20 scale-110 shadow-[0_0_60px_rgba(168,85,247,0.2)]" 
               : "bg-primary/5 hover:bg-primary/10 border border-white/5 hover:border-accent/30",
             isProcessing && "opacity-50 cursor-not-allowed"
           )}
