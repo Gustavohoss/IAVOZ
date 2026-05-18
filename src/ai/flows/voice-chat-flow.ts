@@ -49,7 +49,7 @@ async function toWav(
   });
 }
 
-export async function voiceChat(input: VoiceChatInput): Promise<VoidChatOutput> {
+export async function voiceChat(input: VoiceChatInput): Promise<VoiceChatOutput> {
   return voiceChatFlow(input);
 }
 
