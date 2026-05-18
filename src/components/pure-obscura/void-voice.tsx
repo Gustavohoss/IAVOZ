@@ -15,17 +15,17 @@ export function VoidVoice() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
 
-  // Limpeza profunda da instância de voz
+  // Limpeza profunda da instância de voz para liberar o hardware
   const killRecognition = useCallback(() => {
     if (recognitionRef.current) {
       const rec = recognitionRef.current;
-      // Remove todos os handlers para que nenhum evento atrase o encerramento
+      // Remove todos os handlers para evitar chamadas fantasmas
       rec.onstart = null;
       rec.onresult = null;
       rec.onerror = null;
       rec.onend = null;
       try {
-        rec.abort(); // Abort é mais agressivo e libera o mic mais rápido que stop()
+        rec.abort(); // Abort é mais agressivo que stop() para liberar o mic
       } catch (e) {
         // Ignora erros de encerramento
       }
@@ -41,7 +41,7 @@ export function VoidVoice() {
     setAiResponse("");
     setError(null);
     
-    // Para o áudio anterior se houver
+    // Para qualquer áudio da IA que esteja tocando
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
@@ -51,13 +51,13 @@ export function VoidVoice() {
       const result = await voiceChat({ userMessage: text });
       setAiResponse(result.text);
       
-      if (audioRef.current) {
+      if (audioRef.current && result.audioDataUri) {
         audioRef.current.src = result.audioDataUri;
-        audioRef.current.play().catch(e => console.warn("Audio play blocked", e));
+        audioRef.current.play().catch(e => console.warn("Audio play blocked by browser", e));
       }
     } catch (err) {
       console.error("Error processing voice:", err);
-      setError("Falha na resposta.");
+      setError("Falha na resposta da IA.");
     } finally {
       setIsProcessing(false);
     }
@@ -67,18 +67,18 @@ export function VoidVoice() {
     // 1. Mata qualquer sessão anterior agressivamente
     killRecognition();
 
-    // 2. Delay necessário para o hardware do OS liberar o microfone
+    // 2. Pequeno delay para o hardware do sistema operacional liberar o microfone
     setTimeout(() => {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       
       if (!SpeechRecognition) {
-        setError("Navegador não suporta voz.");
+        setError("Seu navegador não suporta reconhecimento de voz.");
         return;
       }
 
       try {
         const recognition = new SpeechRecognition();
-        recognition.lang = 'pt-BR'; // Entende PT e EN melhor assim
+        recognition.lang = 'pt-BR'; // Detecta PT-BR e EN-US melhor com essa base
         recognition.continuous = false;
         recognition.interimResults = false;
         recognition.maxAlternatives = 1;
@@ -101,9 +101,9 @@ export function VoidVoice() {
         recognition.onerror = (event: any) => {
           console.error("Recognition error:", event.error);
           if (event.error === 'audio-capture') {
-            setError("Microfone ocupado. Tente de novo.");
+            setError("Microfone ocupado. Tente clicar novamente.");
           } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
-            setError(`Erro: ${event.error}`);
+            setError(`Erro de voz: ${event.error}`);
           }
           setIsRecording(false);
         };
@@ -116,10 +116,10 @@ export function VoidVoice() {
         recognition.start();
       } catch (e) {
         console.error("Critical start error:", e);
-        setError("Erro ao iniciar captura.");
+        setError("Não foi possível iniciar o microfone.");
         setIsRecording(false);
       }
-    }, 250); // Delay de segurança para reset de hardware
+    }, 250); // Delay de segurança essencial para o hardware
   }, [killRecognition]);
 
   const toggleSession = () => {
@@ -131,7 +131,7 @@ export function VoidVoice() {
     }
   };
 
-  // Limpeza ao desmontar componente
+  // Limpeza ao desmontar o componente
   useEffect(() => {
     return () => killRecognition();
   }, [killRecognition]);
