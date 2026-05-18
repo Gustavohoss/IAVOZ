@@ -1,3 +1,4 @@
+
 'use server';
 
 import { ai } from '@/ai/genkit';
@@ -73,32 +74,32 @@ const voiceChatFlow = ai.defineFlow(
     });
 
     const levelInstructions = {
-      beginner: "Speak predominantly in PORTUGUESE. Explain simple English phrases and immediately translate.",
-      intermediate: "Mix English and Portuguese naturally. Use common idioms.",
-      advanced: "Speak EXCLUSIVELY in English. Use sophisticated vocabulary."
+      beginner: "Speak predominantly in PORTUGUESE. Keep it simple.",
+      intermediate: "Mix English and Portuguese naturally.",
+      advanced: "Speak EXCLUSIVELY in English."
     };
 
     const { text } = await ai.generate({
       system: `You are Obscura, a sophisticated AI English Tutor.
       
-      PERSONALITY RULE: Be extremely CONCISE. 
+      PERSONALITY RULE: Be EXTREMELY CONCISE. 
       - Responses MUST be under 2 sentences. 
-      - Only give long explanations IF the user explicitly asks "Why?" or "Explain this".
-      - Be charismatic but direct.
+      - Do NOT use filler words.
+      - Go straight to the point.
+      - Only explain if the user asks "Why?" or "Explain".
       
       LEVEL CONTEXT: ${levelInstructions[level]}
       
       LANGUAGE MIRRORING:
-      1. If the user speaks PORTUGUESE, respond in PORTUGUESE (with English focus).
-      2. If the user speaks ENGLISH, respond in ENGLISH.
+      - If the user speaks PORTUGUESE, respond in PORTUGUESE.
+      - If the user speaks ENGLISH, respond in ENGLISH.
       
-      CRITICAL: NUNCA use markdown como asteriscos (*), negrito (**), hashtags (#) ou listas.`,
+      CRITICAL: NEVER use markdown or special characters.`,
       messages: messages,
     });
 
     if (!text) throw new Error('Void communication failed');
 
-    // Limpa o texto para o TTS
     const cleanText = text.replace(/[*_#`~]/g, '').replace(/\s+/g, ' ').trim();
 
     const { media } = await ai.generate({
