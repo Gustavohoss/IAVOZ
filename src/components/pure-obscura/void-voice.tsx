@@ -31,7 +31,6 @@ export function VoidVoice({ level = 'intermediate', onBack }: VoidVoiceProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
 
-  // Kill hardware and cleanup all listeners
   const killHardware = useCallback(() => {
     if (recognitionRef.current) {
       const rec = recognitionRef.current;
@@ -93,7 +92,6 @@ export function VoidVoice({ level = 'intermediate', onBack }: VoidVoiceProps) {
     setIsResetting(true);
     setError(null);
 
-    // Short delay to ensure browser releases hardware from previous session
     setTimeout(() => {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       
@@ -159,47 +157,47 @@ export function VoidVoice({ level = 'intermediate', onBack }: VoidVoiceProps) {
 
   return (
     <div className="w-full h-full flex flex-col items-center justify-center relative p-6">
-      {/* UI Navigation: Back to Menu */}
       <button 
         onClick={onBack}
-        className="fixed top-8 left-8 z-50 text-[10px] uppercase tracking-widest text-muted-foreground/40 hover:text-accent transition-colors duration-500 flex items-center gap-2 bg-black/20 p-2 rounded"
+        className="fixed top-8 left-8 z-50 text-[10px] uppercase tracking-widest text-muted-foreground/40 hover:text-accent transition-colors duration-500 flex items-center gap-2 bg-black/40 backdrop-blur-md px-3 py-2 rounded border border-white/5"
       >
         <ChevronLeft size={14} />
         Back to Menu
       </button>
 
-      {/* UI Navigation: Chat History */}
       <div className="fixed top-8 right-8 z-50">
         <button 
           onClick={() => setShowHistory(!showHistory)}
-          className="text-muted-foreground/40 hover:text-accent transition-colors duration-500 flex items-center gap-2 bg-black/20 p-2 rounded"
+          className="text-muted-foreground/40 hover:text-accent transition-colors duration-500 flex items-center gap-2 bg-black/40 backdrop-blur-md px-3 py-2 rounded border border-white/5"
         >
           <MessageSquare size={16} strokeWidth={1.5} />
           <span className="text-[10px] uppercase tracking-widest hidden sm:inline">History</span>
         </button>
 
         {showHistory && (
-          <div className="absolute top-12 right-0 w-72 h-96 bg-background/95 backdrop-blur-xl border border-white/5 rounded-lg shadow-2xl p-4 flex flex-col gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
-            <div className="flex justify-between items-center border-b border-white/5 pb-2">
-              <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Chat Logs</span>
-              <button onClick={() => setShowHistory(false)} className="text-muted-foreground hover:text-primary">
-                <X size={14} />
+          <div className="absolute top-12 right-0 w-80 h-[500px] bg-background/95 backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl p-4 flex flex-col gap-4 animate-in fade-in slide-in-from-top-4 duration-500 z-[60]">
+            <div className="flex justify-between items-center border-b border-white/5 pb-3">
+              <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">Chat Logs</span>
+              <button onClick={() => setShowHistory(false)} className="text-muted-foreground hover:text-primary p-1">
+                <X size={16} />
               </button>
             </div>
             <ScrollArea className="flex-1 pr-4">
-              <div className="space-y-4">
+              <div className="space-y-6 py-2">
                 {history.length === 0 && (
-                  <p className="text-[10px] uppercase text-center text-muted-foreground/20 py-10">Empty void...</p>
+                  <p className="text-[10px] uppercase text-center text-muted-foreground/20 py-20 tracking-widest">Empty void...</p>
                 )}
                 {history.map((msg, i) => (
                   <div key={i} className={cn(
-                    "flex flex-col gap-1",
+                    "flex flex-col gap-2",
                     msg.role === 'user' ? "items-end" : "items-start"
                   )}>
-                    <span className="text-[8px] uppercase tracking-widest opacity-30">{msg.role}</span>
+                    <span className="text-[7px] uppercase tracking-[0.3em] opacity-40 font-bold">{msg.role}</span>
                     <p className={cn(
-                      "text-xs p-2 rounded-lg max-w-[90%]",
-                      msg.role === 'user' ? "bg-accent/10 text-primary border border-accent/20" : "bg-primary/5 text-muted-foreground"
+                      "text-[11px] p-3 rounded-md max-w-[95%] leading-relaxed",
+                      msg.role === 'user' 
+                        ? "bg-accent/10 text-primary border border-accent/20" 
+                        : "bg-primary/5 text-muted-foreground border border-white/5"
                     )}>
                       {msg.content}
                     </p>
@@ -211,67 +209,72 @@ export function VoidVoice({ level = 'intermediate', onBack }: VoidVoiceProps) {
         )}
       </div>
 
-      {/* Main Conversation Display */}
-      <div className="text-center space-y-6 max-w-lg px-6 min-h-[220px] flex flex-col justify-end">
+      <div className="text-center space-y-8 max-w-xl px-6 min-h-[250px] flex flex-col justify-center mb-12">
         {error && (
-          <div className="flex items-center justify-center gap-2 text-destructive/80 text-[10px] uppercase tracking-widest animate-pulse">
-            <AlertCircle size={12} />
+          <div className="flex items-center justify-center gap-2 text-destructive/80 text-[10px] uppercase tracking-widest animate-pulse font-bold">
+            <AlertCircle size={14} />
             {error}
           </div>
         )}
 
-        {transcript && (
-          <p className="text-muted-foreground/40 text-[10px] uppercase tracking-widest italic animate-in fade-in">
-            "{transcript}"
-          </p>
-        )}
+        <div className="min-h-[20px]">
+          {transcript && (
+            <p className="text-muted-foreground/40 text-[10px] uppercase tracking-widest italic animate-in fade-in">
+              "{transcript}"
+            </p>
+          )}
+        </div>
         
-        {isProcessing ? (
-          <div className="flex flex-col items-center gap-2 py-4">
-            <Loader2 className="w-5 h-5 text-accent animate-spin" strokeWidth={1} />
-            <span className="text-[10px] uppercase tracking-[0.2em] text-accent/50">Obscura is thinking...</span>
-          </div>
-        ) : (
-          aiResponse && (
-            <div className="space-y-4">
-              <p className="text-primary font-body text-base md:text-xl tracking-wide leading-relaxed fade-in-slow">
-                {aiResponse}
-              </p>
+        <div className="min-h-[120px] flex items-center justify-center">
+          {isProcessing ? (
+            <div className="flex flex-col items-center gap-3 py-4">
+              <Loader2 className="w-6 h-6 text-accent animate-spin" strokeWidth={1} />
+              <span className="text-[10px] uppercase tracking-[0.4em] text-accent/50 animate-pulse">Obscura is thinking...</span>
             </div>
-          )
-        )}
+          ) : (
+            aiResponse && (
+              <div className="space-y-4 max-w-md">
+                <p className="text-primary font-body text-base md:text-xl tracking-wide leading-relaxed fade-in-slow">
+                  {aiResponse}
+                </p>
+              </div>
+            )
+          )}
+        </div>
       </div>
 
-      {/* Mic Controls */}
-      <div className="relative group mt-12">
+      <div className="relative group mt-auto mb-12">
         <button
           onClick={toggleSession}
           disabled={isProcessing || isResetting}
           className={cn(
-            "relative z-10 w-28 h-28 md:w-32 md:h-32 rounded-full flex items-center justify-center transition-all duration-500",
+            "relative z-10 w-28 h-28 md:w-36 md:h-36 rounded-full flex items-center justify-center transition-all duration-700",
             isRecording 
-              ? "bg-accent/20 scale-105 shadow-[0_0_50px_rgba(168,85,247,0.3)]" 
-              : "bg-primary/5 border border-white/5 hover:border-accent/30",
-            (isProcessing || isResetting) && "opacity-20 cursor-not-allowed"
+              ? "bg-accent/20 scale-110 shadow-[0_0_80px_rgba(168,85,247,0.3)]" 
+              : "bg-primary/5 border border-white/5 hover:border-accent/30 hover:bg-primary/10",
+            (isProcessing || isResetting) && "opacity-10 cursor-not-allowed grayscale"
           )}
         >
           {isRecording ? (
             <div className="relative flex items-center justify-center">
-              <div className="absolute w-24 h-24 rounded-full border border-accent/40 animate-ping" />
+              <div className="absolute w-32 h-32 rounded-full border border-accent/40 animate-ping" />
               <Square className="w-8 h-8 text-accent" strokeWidth={1} fill="currentColor" />
             </div>
           ) : (
             <Mic className={cn(
-              "w-10 h-10 transition-colors duration-500",
-              (isProcessing || isResetting) ? "text-muted-foreground/10" : "text-muted-foreground/30 group-hover:text-accent/60"
+              "w-12 h-12 transition-all duration-500",
+              (isProcessing || isResetting) ? "text-muted-foreground/5" : "text-muted-foreground/20 group-hover:text-accent/60"
             )} strokeWidth={1} />
           )}
         </button>
       </div>
 
-      <div className="mt-8 flex flex-col items-center gap-2">
-        <p className="text-[10px] uppercase tracking-[0.4em] text-muted-foreground/30 transition-all duration-300">
-          {isRecording ? "Listening..." : isProcessing ? "Thinking..." : isResetting ? "Cleaning hardware..." : "Tap to Speak"}
+      <div className="mb-20 flex flex-col items-center gap-2">
+        <p className={cn(
+          "text-[9px] uppercase tracking-[0.5em] transition-all duration-700 font-medium",
+          isRecording ? "text-accent animate-pulse" : "text-muted-foreground/20"
+        )}>
+          {isRecording ? "Listening..." : isProcessing ? "Processing..." : isResetting ? "Resetting Hardware..." : "Tap to Speak"}
         </p>
       </div>
 
