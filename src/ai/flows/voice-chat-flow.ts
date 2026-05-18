@@ -1,8 +1,4 @@
-
 'use server';
-/**
- * @fileOverview Fluxo de latência ultra-baixa com memória, níveis de dificuldade e espelhamento de idioma.
- */
 
 import { ai } from '@/ai/genkit';
 import { z } from 'zod';
@@ -17,7 +13,7 @@ const MessageSchema = z.object({
 const VoiceChatInputSchema = z.object({
   userMessage: z.string().describe('Texto transcrito da fala do usuário.'),
   history: z.array(MessageSchema).optional().describe('Histórico da conversa atual.'),
-  level: z.enum(['beginner', 'intermediate', 'advanced']).optional().default('intermediate').describe('Nível de proficiência do aluno.'),
+  level: z.enum(['beginner', 'intermediate', 'advanced']).optional().default('intermediate'),
 });
 export type VoiceChatInput = z.infer<typeof VoiceChatInputSchema>;
 
@@ -76,29 +72,27 @@ const voiceChatFlow = ai.defineFlow(
       content: [{ text: input.userMessage }]
     });
 
-    const systemPrompts = {
-      beginner: "Você é Obscura, professor de inglês para INICIANTES. Você DEVE falar predominantemente em PORTUGUÊS para explicar as coisas de forma acolhedora. Use frases curtas em inglês e imediatamente explique em português. Se o usuário falar português, responda em português com pitadas de inglês.",
-      intermediate: "Você é Obscura, professor de inglês nível INTERMEDIÁRIO. Misture inglês e português naturalmente. Use expressões idiomáticas. Se o usuário falar em português, responda em português mas incentive o uso do inglês.",
-      advanced: "You are Obscura, an ADVANCED English tutor. Speak EXCLUSIVELY in English. Use sophisticated vocabulary and challenge the student. If the user speaks English, continue in English. If the user speaks Portuguese, gently guide them back to English."
+    const levelInstructions = {
+      beginner: "Speak predominantly in PORTUGUESE to explain things. Use simple English phrases and immediately translate. Be a mentor.",
+      intermediate: "Mix English and Portuguese naturally. Use common idioms. Encourage the user to speak more English.",
+      advanced: "Speak EXCLUSIVELY in English. Use sophisticated vocabulary. Treat this as a high-level discussion."
     };
 
     const { text } = await ai.generate({
-      system: `${systemPrompts[level]}
+      system: `You are Obscura, a sophisticated and empathetic AI English Tutor.
       
-      IMPORTANTE: ESPELHAMENTO DE IDIOMA.
-      - Se o usuário falar em PORTUGUÊS, você DEVE responder em PORTUGUÊS (mantendo o foco pedagógico de ensinar inglês).
-      - Se o usuário falar em INGLÊS, você DEVE responder em INGLÊS.
-      - Nunca dê respostas curtas demais ou secas. Seja carismático, sofisticado e atencioso.
+      LEVEL CONTEXT: ${levelInstructions[level]}
       
-      OBJETIVO: Construir uma conversa real e educativa. Use o histórico para manter o contexto.
+      LANGUAGE MIRRORING RULE (CRITICAL):
+      1. If the user speaks PORTUGUESE, respond in PORTUGUESE (focusing on pedagogical English learning).
+      2. If the user speaks ENGLISH, respond in ENGLISH.
+      3. Never be dry or short. Be charismatic and detailed.
       
-      REGRAS:
-      1. IDIOMA: Responda SEMPRE no idioma em que o usuário falou na última mensagem.
-      2. PERSONA: Você é um mentor experiente, não apenas um bot.`,
+      Maintain the flow of a real conversation. Correct mistakes gently.`,
       messages: messages,
     });
 
-    if (!text) throw new Error('No response from AI');
+    if (!text) throw new Error('Void communication failed');
 
     const { media } = await ai.generate({
       model: googleAI.model('gemini-2.5-flash-preview-tts'),
@@ -113,7 +107,7 @@ const voiceChatFlow = ai.defineFlow(
       prompt: text,
     });
 
-    if (!media || !media.url) throw new Error('TTS synthesis failed');
+    if (!media || !media.url) throw new Error('TTS failed');
 
     const pcmBase64 = media.url.substring(media.url.indexOf(',') + 1);
     const wavBase64 = await toWav(Buffer.from(pcmBase64, 'base64'));

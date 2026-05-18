@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
@@ -14,11 +13,11 @@ type Message = {
 };
 
 interface VoidVoiceProps {
-  level?: EnglishLevel;
+  level: EnglishLevel;
   onBack: () => void;
 }
 
-export function VoidVoice({ level = 'intermediate', onBack }: VoidVoiceProps) {
+export function VoidVoice({ level, onBack }: VoidVoiceProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isHardwareCooling, setIsHardwareCooling] = useState(false);
@@ -31,11 +30,10 @@ export function VoidVoice({ level = 'intermediate', onBack }: VoidVoiceProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
 
-  // NOVIDADE: Limpeza Atômica que desvincula TUDO antes de descartar
-  const killHardwareInstance = useCallback(() => {
+  // KILL SWITCH: O segredo para o hardware não travar
+  const killHardware = useCallback(() => {
     if (recognitionRef.current) {
       const rec = recognitionRef.current;
-      // Desvincula eventos para evitar que callbacks "fantasmas" rodem depois
       rec.onstart = null;
       rec.onresult = null;
       rec.onerror = null;
@@ -48,19 +46,14 @@ export function VoidVoice({ level = 'intermediate', onBack }: VoidVoiceProps) {
     setIsRecording(false);
   }, []);
 
-  const handleVoiceSubmit = async (text: string) => {
+  const handleAIQuery = async (text: string) => {
     if (!text || isProcessing) return;
     
-    // Mata a instância IMEDIATAMENTE após capturar o texto
-    killHardwareInstance();
+    // Mata o hardware IMEDIATAMENTE após capturar o texto
+    killHardware();
     setIsProcessing(true);
     setAiResponse("");
     setError(null);
-    
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-    }
     
     try {
       const result = await voiceChat({ 
@@ -78,135 +71,125 @@ export function VoidVoice({ level = 'intermediate', onBack }: VoidVoiceProps) {
       
       if (audioRef.current && result.audioDataUri) {
         audioRef.current.src = result.audioDataUri;
-        audioRef.current.play().catch(e => console.warn("Audio blocked by browser policy", e));
+        audioRef.current.play().catch(e => console.warn("Audio blocked", e));
       }
     } catch (err) {
-      console.error("Voice processing error:", err);
-      setError("The connection to the void was lost. Try again.");
+      console.error("AI processing error:", err);
+      setError("Lost connection to the void. Try again.");
     } finally {
       setIsProcessing(false);
-      // NOVIDADE: Cooldown de hardware forçado de 1 segundo
+      // Cooldown de segurança para o sistema operacional liberar o mic
       setIsHardwareCooling(true);
-      setTimeout(() => setIsHardwareCooling(false), 1000);
+      setTimeout(() => setIsHardwareCooling(false), 1200);
     }
   };
 
-  const startListening = useCallback(() => {
-    // Garante que não há nada rodando
-    killHardwareInstance();
+  const initRecognition = useCallback(() => {
+    killHardware();
     setError(null);
     setTranscript("");
 
-    // Pequeno delay para o navegador processar o encerramento da instância anterior
+    // Pequeno delay para garantir limpeza
     setTimeout(() => {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       
       if (!SpeechRecognition) {
-        setError("Voice capture is not supported in this browser.");
+        setError("Browser does not support voice capture.");
         return;
       }
 
       try {
         const recognition = new SpeechRecognition();
-        // Se for avançado, foca em Inglês, senão Português para facilitar a captura
-        recognition.lang = level === 'advanced' ? 'en-US' : 'pt-BR'; 
+        recognition.lang = level === 'advanced' ? 'en-US' : 'pt-BR';
         recognition.continuous = false;
         recognition.interimResults = false;
 
-        recognition.onstart = () => {
-          setIsRecording(true);
-        };
-
+        recognition.onstart = () => setIsRecording(true);
+        
         recognition.onresult = (event: any) => {
           const text = event.results[0][0].transcript;
           if (text) {
             setTranscript(text);
-            handleVoiceSubmit(text);
+            handleAIQuery(text);
           }
         };
 
         recognition.onerror = (event: any) => {
-          console.error("Speech Recognition Error:", event.error);
-          if (event.error === 'no-speech') setError("I couldn't hear you.");
-          else if (event.error === 'audio-capture') setError("Microphone occupied. Resetting...");
-          else setError("Listening interrupted.");
-          
-          killHardwareInstance();
+          console.error("Mic error:", event.error);
+          if (event.error === 'audio-capture') setError("Microphone occupied. Resetting...");
+          else if (event.error === 'not-allowed') setError("Mic access denied.");
+          else setError("Interrupted.");
+          killHardware();
           setIsHardwareCooling(true);
-          setTimeout(() => setIsHardwareCooling(false), 800);
+          setTimeout(() => setIsHardwareCooling(false), 1000);
         };
 
-        recognition.onend = () => {
-          setIsRecording(false);
-        };
+        recognition.onend = () => setIsRecording(false);
 
         recognitionRef.current = recognition;
         recognition.start();
       } catch (e) {
-        setError("Could not access microphone.");
+        setError("Mic error. Reload if persist.");
         setIsHardwareCooling(false);
       }
     }, 150);
-  }, [killHardwareInstance, level, history]);
+  }, [killHardware, level, history]);
 
   const toggleRecording = () => {
     if (isProcessing || isHardwareCooling) return;
-    if (isRecording) {
-      killHardwareInstance();
-    } else {
-      startListening();
-    }
+    if (isRecording) killHardware();
+    else initRecognition();
   };
 
   useEffect(() => {
-    return () => killHardwareInstance();
-  }, [killHardwareInstance]);
+    return () => killHardware();
+  }, [killHardware]);
 
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center relative p-6">
-      {/* Opções no Topo - Layout Fixo */}
+    <div className="w-full h-screen flex flex-col items-center justify-center relative bg-background">
+      {/* Controles no Topo */}
       <div className="fixed top-8 inset-x-8 flex justify-between items-center z-50">
         <button 
           onClick={onBack}
-          className="text-[10px] uppercase tracking-widest text-muted-foreground/40 hover:text-accent transition-colors duration-500 flex items-center gap-2 bg-black/40 backdrop-blur-md px-4 py-2 rounded border border-white/5"
+          className="group flex items-center gap-2 px-4 py-2 bg-white/5 backdrop-blur-xl border border-white/5 rounded-lg text-muted-foreground hover:text-primary transition-all duration-500"
         >
-          <ChevronLeft size={14} />
-          Back to Menu
+          <ChevronLeft size={16} />
+          <span className="text-[10px] uppercase tracking-[0.2em]">Menu</span>
         </button>
 
         <div className="relative">
           <button 
             onClick={() => setShowHistory(!showHistory)}
-            className="text-muted-foreground/40 hover:text-accent transition-colors duration-500 flex items-center gap-2 bg-black/40 backdrop-blur-md px-4 py-2 rounded border border-white/5"
+            className="flex items-center gap-2 px-4 py-2 bg-white/5 backdrop-blur-xl border border-white/5 rounded-lg text-muted-foreground hover:text-primary transition-all duration-500"
           >
             <MessageSquare size={16} strokeWidth={1.5} />
-            <span className="text-[10px] uppercase tracking-widest">History</span>
+            <span className="text-[10px] uppercase tracking-[0.2em]">History</span>
           </button>
 
           {showHistory && (
-            <div className="absolute top-12 right-0 w-80 h-[450px] bg-background/95 backdrop-blur-2xl border border-white/5 rounded shadow-2xl p-4 flex flex-col gap-4 animate-in fade-in slide-in-from-top-4 duration-500 z-[60]">
-              <div className="flex justify-between items-center border-b border-white/5 pb-3">
-                <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Session Logs</span>
-                <button onClick={() => setShowHistory(false)} className="text-muted-foreground hover:text-primary">
+            <div className="absolute top-14 right-0 w-80 h-[500px] bg-background/95 backdrop-blur-3xl border border-white/5 rounded-xl shadow-2xl p-4 flex flex-col animate-in fade-in slide-in-from-top-4 duration-500 z-[100]">
+              <div className="flex justify-between items-center mb-4 border-b border-white/5 pb-2">
+                <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Session Logs</span>
+                <button onClick={() => setShowHistory(false)} className="p-1 hover:text-accent">
                   <X size={16} />
                 </button>
               </div>
-              <ScrollArea className="flex-1 pr-4">
-                <div className="space-y-6 py-2">
+              <ScrollArea className="flex-1">
+                <div className="space-y-6 pr-4">
                   {history.length === 0 && (
-                    <p className="text-[10px] uppercase text-center text-muted-foreground/20 py-20 tracking-widest">The void is silent...</p>
+                    <p className="text-[10px] uppercase text-center text-muted-foreground/10 py-20 tracking-widest">No data in the void</p>
                   )}
                   {history.map((msg, i) => (
                     <div key={i} className={cn(
                       "flex flex-col gap-2",
                       msg.role === 'user' ? "items-end" : "items-start"
                     )}>
-                      <span className="text-[7px] uppercase tracking-[0.3em] opacity-40">{msg.role}</span>
+                      <span className="text-[7px] uppercase tracking-[0.4em] opacity-30">{msg.role}</span>
                       <p className={cn(
-                        "text-[11px] p-3 rounded max-w-[90%] leading-relaxed",
+                        "text-[11px] p-4 rounded-xl max-w-[90%] leading-relaxed",
                         msg.role === 'user' 
                           ? "bg-accent/10 text-primary border border-accent/20" 
-                          : "bg-primary/5 text-muted-foreground border border-white/5"
+                          : "bg-primary/5 text-muted-foreground/80 border border-white/5"
                       )}>
                         {msg.content}
                       </p>
@@ -219,73 +202,70 @@ export function VoidVoice({ level = 'intermediate', onBack }: VoidVoiceProps) {
         </div>
       </div>
 
-      {/* Conteúdo Central */}
-      <div className="text-center space-y-12 max-w-xl px-6 min-h-[300px] flex flex-col justify-center items-center">
-        {error && (
-          <div className="flex items-center justify-center gap-2 text-destructive/80 text-[10px] uppercase tracking-widest animate-pulse font-medium">
-            <AlertCircle size={14} />
-            {error}
-          </div>
-        )}
-
-        <div className="min-h-[40px] flex items-center justify-center">
-          {transcript && (
-            <p className="text-muted-foreground/40 text-[10px] uppercase tracking-widest italic animate-in fade-in">
-              "{transcript}"
-            </p>
-          )}
-        </div>
-        
-        {/* Resposta da IA / Feedback de Processamento */}
-        <div className="min-h-[140px] flex items-center justify-center">
-          {isProcessing ? (
-            <div className="flex flex-col items-center gap-4">
-              <Loader2 className="w-8 h-8 text-accent animate-spin" strokeWidth={1} />
-              <span className="text-[10px] uppercase tracking-[0.4em] text-accent/50 animate-pulse">Obscura is thinking</span>
+      {/* Interface Central */}
+      <div className="flex flex-col items-center justify-center gap-12 w-full max-w-2xl px-8">
+        <div className="h-20 flex flex-col items-center justify-center gap-4 text-center">
+          {error ? (
+            <div className="flex items-center gap-2 text-destructive text-[10px] uppercase tracking-widest animate-pulse font-bold">
+              <AlertCircle size={14} />
+              {error}
             </div>
           ) : (
-            aiResponse && (
-              <p className="text-primary font-body text-lg md:text-xl tracking-wide leading-relaxed fade-in-slow">
-                {aiResponse}
+            transcript && (
+              <p className="text-muted-foreground/40 text-[11px] uppercase tracking-widest italic animate-in fade-in">
+                "{transcript}"
               </p>
             )
           )}
         </div>
 
-        {/* Botão de Microfone no Centro da Tela */}
+        {/* Círculo do Microfone Central */}
         <div className="relative group">
           <button
             onClick={toggleRecording}
             disabled={isProcessing || isHardwareCooling}
             className={cn(
-              "relative z-10 w-32 h-32 md:w-40 md:h-40 rounded-full flex items-center justify-center transition-all duration-700",
+              "relative z-10 w-40 h-40 md:w-52 md:h-52 rounded-full flex flex-col items-center justify-center transition-all duration-1000",
               isRecording 
-                ? "bg-accent/20 scale-110 shadow-[0_0_100px_rgba(168,85,247,0.4)]" 
-                : "bg-primary/5 border border-white/5 hover:border-accent/40 hover:bg-primary/10",
-              (isProcessing || isHardwareCooling) && "opacity-20 cursor-not-allowed grayscale"
+                ? "bg-accent/20 pulse-accent" 
+                : "bg-white/5 border border-white/5 hover:border-accent/30 hover:bg-white/10",
+              (isProcessing || isHardwareCooling) && "opacity-30 cursor-not-allowed grayscale"
             )}
           >
             {isRecording ? (
-              <div className="relative flex items-center justify-center">
-                <div className="absolute w-36 h-36 rounded-full border border-accent/30 animate-ping" />
-                <Square className="w-10 h-10 text-accent" strokeWidth={1} fill="currentColor" />
-              </div>
+              <Square className="w-12 h-12 text-accent" strokeWidth={1} fill="currentColor" />
+            ) : isProcessing ? (
+              <Loader2 className="w-14 h-14 text-accent animate-spin" strokeWidth={1} />
             ) : (
-              <Mic className={cn(
-                "w-14 h-14 transition-all duration-500",
-                (isProcessing || isHardwareCooling) ? "text-muted-foreground/10" : "text-muted-foreground/30 group-hover:text-accent/70"
-              )} strokeWidth={1} />
+              <Mic className="w-16 h-16 text-muted-foreground/20 group-hover:text-accent/60 transition-colors duration-700" strokeWidth={1} />
             )}
-          </button>
-
-          <div className="mt-8 text-center">
-            <p className={cn(
-              "text-[9px] uppercase tracking-[0.5em] transition-all duration-700 font-medium",
-              isRecording ? "text-accent animate-pulse" : "text-muted-foreground/30"
+            
+            <span className={cn(
+              "absolute bottom-8 text-[9px] uppercase tracking-[0.4em] font-medium transition-all duration-700",
+              isRecording ? "text-accent animate-pulse" : "text-muted-foreground/20"
             )}>
-              {isRecording ? "Listening..." : isProcessing ? "Processing..." : isHardwareCooling ? "Resetting Hardware" : "Touch to Converse"}
+              {isRecording ? "Listening" : isProcessing ? "Thinking" : isHardwareCooling ? "Resetting" : "Touch"}
+            </span>
+          </button>
+        </div>
+
+        {/* Resposta da IA */}
+        <div className="min-h-[160px] w-full flex items-center justify-center">
+          {!isProcessing && aiResponse && (
+            <p className="text-primary font-light text-xl md:text-2xl tracking-wide leading-relaxed text-center fade-in-slow">
+              {aiResponse}
             </p>
-          </div>
+          )}
+          {isProcessing && (
+            <div className="flex flex-col items-center gap-3">
+              <div className="flex gap-1">
+                <div className="w-1.5 h-1.5 rounded-full bg-accent/40 animate-bounce [animation-delay:-0.3s]" />
+                <div className="w-1.5 h-1.5 rounded-full bg-accent/40 animate-bounce [animation-delay:-0.15s]" />
+                <div className="w-1.5 h-1.5 rounded-full bg-accent/40 animate-bounce" />
+              </div>
+              <span className="text-[9px] uppercase tracking-[0.6em] text-accent/20">Establishing connection</span>
+            </div>
+          )}
         </div>
       </div>
 
