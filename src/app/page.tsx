@@ -3,11 +3,26 @@
 import { useState } from "react";
 import { VoidVoice } from "@/components/pure-obscura/void-voice";
 import { StealthControls } from "@/components/pure-obscura/stealth-controls";
-import { Mic, MessageSquare, Settings, GraduationCap, ChevronRight } from "lucide-react";
+import { Mic, MessageSquare, Settings, GraduationCap, ChevronRight, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+export type EnglishLevel = 'beginner' | 'intermediate' | 'advanced';
 
 export default function Home() {
   const [view, setView] = useState<"menu" | "chat">("menu");
+  const [level, setLevel] = useState<EnglishLevel>("intermediate");
+
+  const levelLabels = {
+    beginner: "Beginner",
+    intermediate: "Intermediate",
+    advanced: "Advanced"
+  };
 
   return (
     <main className="min-h-screen bg-[#050505] flex flex-col items-center justify-center relative overflow-hidden">
@@ -45,13 +60,32 @@ export default function Home() {
             </button>
 
             <div className="grid grid-cols-2 gap-3 mt-2">
-              <button className="flex flex-col items-center gap-3 p-4 bg-primary/5 hover:bg-primary/10 border border-white/5 transition-all duration-500 rounded-lg">
-                <Settings size={16} className="text-muted-foreground/60" strokeWidth={1.5} />
-                <span className="text-[9px] uppercase tracking-widest text-muted-foreground/60">Level</span>
-              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="flex flex-col items-center gap-3 p-4 bg-primary/5 hover:bg-primary/10 border border-white/5 transition-all duration-500 rounded-lg">
+                    <Settings size={16} className="text-muted-foreground/60" strokeWidth={1.5} />
+                    <span className="text-[9px] uppercase tracking-widest text-muted-foreground/60">
+                      {levelLabels[level]}
+                    </span>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="bg-background border-white/5 text-muted-foreground">
+                  {(['beginner', 'intermediate', 'advanced'] as EnglishLevel[]).map((l) => (
+                    <DropdownMenuItem 
+                      key={l} 
+                      onClick={() => setLevel(l)}
+                      className="flex items-center justify-between gap-4 text-[10px] uppercase tracking-widest focus:bg-accent/10 focus:text-accent"
+                    >
+                      {levelLabels[l]}
+                      {level === l && <Check size={10} className="text-accent" />}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
               <button className="flex flex-col items-center gap-3 p-4 bg-primary/5 hover:bg-primary/10 border border-white/5 transition-all duration-500 rounded-lg">
                 <Mic size={16} className="text-muted-foreground/60" strokeWidth={1.5} />
-                <span className="text-[9px] uppercase tracking-widest text-muted-foreground/60">Voice</span>
+                <span className="text-[9px] uppercase tracking-widest text-muted-foreground/60">Algenib</span>
               </button>
             </div>
           </nav>
@@ -66,7 +100,7 @@ export default function Home() {
             Back to Menu
           </button>
           
-          <VoidVoice />
+          <VoidVoice level={level} />
         </div>
       )}
       

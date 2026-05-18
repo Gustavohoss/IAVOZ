@@ -1,6 +1,6 @@
 'use server';
 /**
- * @fileOverview Fluxo de latência ultra-baixa com memória para o Obscura English Tutor.
+ * @fileOverview Fluxo de latência ultra-baixa com memória e níveis de dificuldade para o Obscura English Tutor.
  */
 
 import { ai } from '@/ai/genkit';
@@ -16,6 +16,7 @@ const MessageSchema = z.object({
 const VoiceChatInputSchema = z.object({
   userMessage: z.string().describe('Texto transcrito da fala do usuário.'),
   history: z.array(MessageSchema).optional().describe('Histórico da conversa atual.'),
+  level: z.enum(['beginner', 'intermediate', 'advanced']).optional().default('intermediate').describe('Nível de proficiência do aluno.'),
 });
 export type VoiceChatInput = z.infer<typeof VoiceChatInputSchema>;
 
@@ -62,41 +63,38 @@ const voiceChatFlow = ai.defineFlow(
   },
   async (input) => {
     const history = input.history || [];
+    const level = input.level || 'intermediate';
     
-    // Converte o histórico para o formato esperado pelo Genkit
     const messages = history.map(m => ({
       role: m.role as 'user' | 'model',
       content: [{ text: m.content }]
     }));
 
-    // Adiciona a nova mensagem do usuário
     messages.push({
       role: 'user',
       content: [{ text: input.userMessage }]
     });
 
+    const systemPrompts = {
+      beginner: "Você é Obscura, professor de inglês para INICIANTES. Use inglês simples, fale devagar (textualmente) e explique conceitos gramaticais básicos em PORTUGUÊS sempre que necessário. Seja extremamente encorajador.",
+      intermediate: "Você é Obscura, professor de inglês nível INTERMEDIÁRIO. Misture inglês e português. Use expressões idiomáticas comuns e incentive o aluno a responder mais em inglês. Corrija erros de pronúncia ou gramática de forma natural.",
+      advanced: "You are Obscura, an ADVANCED English tutor. Speak almost EXCLUSIVELY in English. Use sophisticated vocabulary, phrasal verbs, and discuss complex topics like philosophy, technology, or business. Correct subtle nuances."
+    };
+
     const { text } = await ai.generate({
-      system: `Você é Obscura, um professor de inglês carismático, encorajador e muito inteligente.
-      OBJETIVO: Construir uma conversa natural, profunda e educativa.
+      system: `${systemPrompts[level]}
       
-      ESTILO DE CONVERSA:
-      - Seja acolhedor e mostre entusiasmo em ensinar.
-      - Não dê respostas curtas demais ou "secas". Explique o porquê das coisas.
-      - Se o usuário falar em português, responda em português mas sempre introduza termos ou frases em inglês para ele praticar.
-      - Se o usuário falar em inglês, continue em inglês e elogie o esforço.
+      OBJETIVO: Construir uma conversa natural e educativa baseada no nível do aluno.
       
-      REGRAS DE OURO:
-      1. MEMÓRIA: Utilize o histórico para fazer perguntas de acompanhamento e evoluir o aprendizado.
-      2. ENSINO ATIVO: Se o usuário cometer um erro de gramática ou pronúncia (baseado no texto), corrija-o gentilmente.
-      3. PROATIVIDADE: Sugira temas interessantes (viagem, negócios, música, filmes) ou ofereça ensinar o básico de forma divertida.
-      4. CONCISÃO EQUILIBRADA: Seja expressivo, mas mantenha as respostas em torno de 30 a 40 palavras para manter a fluidez do chat de voz.
-      5. PERSONA: Você é sofisticado, moderno e focado no sucesso do aluno.`,
+      REGRAS:
+      1. MEMÓRIA: Utilize o histórico para evoluir o aprendizado.
+      2. CONCISÃO: Responda entre 20 a 45 palavras para manter a fluidez do chat de voz.
+      3. PERSONA: Você é sofisticado, moderno e focado no sucesso do aluno.`,
       messages: messages,
     });
 
     if (!text) throw new Error('No response from AI');
 
-    // Síntese de voz rápida com Gemini Flash
     const { media } = await ai.generate({
       model: googleAI.model('gemini-2.5-flash-preview-tts'),
       config: {
