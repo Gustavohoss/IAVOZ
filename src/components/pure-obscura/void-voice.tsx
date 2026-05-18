@@ -18,12 +18,15 @@ export function VoidVoice() {
   const cleanupRecognition = useCallback(() => {
     if (recognitionRef.current) {
       try {
+        // Remove todos os handlers para evitar vazamento de memória e conflitos
         recognitionRef.current.onstart = null;
         recognitionRef.current.onresult = null;
         recognitionRef.current.onerror = null;
         recognitionRef.current.onend = null;
         recognitionRef.current.abort();
-      } catch (e) {}
+      } catch (e) {
+        console.warn("Silent cleanup error:", e);
+      }
       recognitionRef.current = null;
     }
   }, []);
@@ -62,7 +65,9 @@ export function VoidVoice() {
   };
 
   const startRecording = useCallback(() => {
+    // 1. Limpa qualquer tentativa anterior agressivamente
     cleanupRecognition();
+    stopAudio();
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -70,9 +75,11 @@ export function VoidVoice() {
       return;
     }
 
+    // 2. Pequeno delay para o hardware "respirar"
     setTimeout(() => {
       try {
         const recognition = new SpeechRecognition();
+        // Configuramos para pt-BR para entender suas dúvidas em português e inglês
         recognition.lang = 'pt-BR';
         recognition.continuous = false;
         recognition.interimResults = false;
@@ -93,8 +100,11 @@ export function VoidVoice() {
         };
 
         recognition.onerror = (event: any) => {
-          if (event.error !== 'no-speech' && event.error !== 'aborted') {
-            setError(`Erro: ${event.error}`);
+          // Se o erro for de captura, damos um feedback claro
+          if (event.error === 'audio-capture') {
+            setError("Microfone em uso ou não encontrado.");
+          } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
+            setError(`Erro: ${event.error.toUpperCase()}`);
           }
           setIsRecording(false);
         };
@@ -106,11 +116,11 @@ export function VoidVoice() {
         recognitionRef.current = recognition;
         recognition.start();
       } catch (e) {
-        setError("Falha no microfone.");
+        setError("Falha ao abrir microfone.");
         setIsRecording(false);
       }
     }, 100);
-  }, [cleanupRecognition]);
+  }, [cleanupRecognition, stopAudio]);
 
   const toggleSession = () => {
     if (isProcessing) return;

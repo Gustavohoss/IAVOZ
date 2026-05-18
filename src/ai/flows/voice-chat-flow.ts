@@ -1,7 +1,7 @@
 'use server';
 /**
- * @fileOverview Um fluxo Genkit otimizado para latência mínima.
- * Atua como um Professor de Inglês ágil que responde rapidamente.
+ * @fileOverview Fluxo otimizado para latência ultra-baixa.
+ * Atua como um Professor de Inglês ágil e responsivo.
  */
 
 import { ai } from '@/ai/genkit';
@@ -56,19 +56,20 @@ const voiceChatFlow = ai.defineFlow(
     outputSchema: VoiceChatOutputSchema,
   },
   async (input) => {
-    // Usando ai.generate diretamente para reduzir overhead de wrappers de prompt
+    // Processamento ultra-rápido usando ai.generate diretamente
     const { text } = await ai.generate({
-      system: `You are an agile English teacher. 
-      Rules:
-      1. Speak the same language as the user.
-      2. Be extremely concise (max 2 short sentences).
-      3. Teach one English point or ask one follow-up question.
-      4. Always offer to help with basics or specific topics.`,
+      system: `Você é um professor de inglês ágil.
+      REGRAS:
+      1. RESPONDA NO MESMO IDIOMA DO USUÁRIO.
+      2. Se ele falar em português, responda em português, ensine o termo em inglês equivalente e pergunte se quer aprender o básico ou algo específico.
+      3. Seja EXTREMAMENTE conciso (máximo 2 frases curtas).
+      4. Foco total em velocidade e utilidade.`,
       prompt: input.userMessage,
     });
 
     if (!text) throw new Error('No response');
 
+    // TTS rápido usando o modelo flash
     const { media } = await ai.generate({
       model: googleAI.model('gemini-2.5-flash-preview-tts'),
       config: {
