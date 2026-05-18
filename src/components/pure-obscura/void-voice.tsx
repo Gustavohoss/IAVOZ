@@ -13,6 +13,7 @@ type Message = {
 export function VoidVoice() {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isResetting, setIsResetting] = useState(false); // Cooldown de hardware
   const [transcript, setTranscript] = useState("");
   const [aiResponse, setAiResponse] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -21,10 +22,11 @@ export function VoidVoice() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
 
-  // Limpeza profunda da instância de voz para liberar o hardware
+  // Limpeza absoluta da instância de voz
   const killRecognition = useCallback(() => {
     if (recognitionRef.current) {
       const rec = recognitionRef.current;
+      // Remove todos os handlers para evitar vazamento de estado
       rec.onstart = null;
       rec.onresult = null;
       rec.onerror = null;
@@ -32,7 +34,7 @@ export function VoidVoice() {
       try {
         rec.abort(); 
       } catch (e) {
-        // Ignora erros de encerramento
+        console.warn("Silent abort fail", e);
       }
       recognitionRef.current = null;
     }
@@ -53,15 +55,12 @@ export function VoidVoice() {
     }
     
     try {
-      // Chama a IA passando o histórico acumulado
       const result = await voiceChat({ 
         userMessage: text,
         history: history 
       });
       
       setAiResponse(result.text);
-
-      // Atualiza o histórico local com a nova interação
       setHistory(prev => [
         ...prev,
         { role: 'user', content: text },
@@ -70,26 +69,31 @@ export function VoidVoice() {
       
       if (audioRef.current && result.audioDataUri) {
         audioRef.current.src = result.audioDataUri;
-        audioRef.current.play().catch(e => console.warn("Audio play blocked by browser", e));
+        audioRef.current.play().catch(e => console.warn("Audio play blocked", e));
       }
     } catch (err) {
       console.error("Error processing voice:", err);
       setError("Falha na resposta da IA.");
     } finally {
       setIsProcessing(false);
+      // Ativa um pequeno cooldown para o hardware respirar
+      setIsResetting(true);
+      setTimeout(() => setIsResetting(false), 500);
     }
   };
 
   const startListening = useCallback(() => {
-    // 1. Mata qualquer sessão anterior agressivamente
+    // 1. Mata qualquer sessão anterior
     killRecognition();
+    setIsResetting(true);
 
-    // 2. Pequeno delay para o hardware do sistema operacional liberar o microfone
+    // 2. Delay para o OS liberar o mic
     setTimeout(() => {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       
       if (!SpeechRecognition) {
-        setError("Seu navegador não suporta reconhecimento de voz.");
+        setError("Navegador sem suporte a voz.");
+        setIsResetting(false);
         return;
       }
 
@@ -98,13 +102,12 @@ export function VoidVoice() {
         recognition.lang = 'pt-BR'; 
         recognition.continuous = false;
         recognition.interimResults = false;
-        recognition.maxAlternatives = 1;
 
         recognition.onstart = () => {
           setIsRecording(true);
+          setIsResetting(false);
           setError(null);
           setTranscript("");
-          setAiResponse("");
         };
 
         recognition.onresult = (event: any) => {
@@ -116,31 +119,33 @@ export function VoidVoice() {
         };
 
         recognition.onerror = (event: any) => {
-          console.error("Recognition error:", event.error);
-          if (event.error === 'audio-capture') {
-            setError("Microfone ocupado. Tente clicar novamente.");
-          } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
-            setError(`Erro de voz: ${event.error}`);
+          console.error("Mic error:", event.error);
+          if (event.error === 'audio-capture' || event.error === 'not-allowed') {
+            setError("Microfone ocupado ou negado. Tente novamente.");
           }
-          setIsRecording(false);
+          killRecognition();
+          setIsResetting(true);
+          setTimeout(() => setIsResetting(false), 800);
         };
 
         recognition.onend = () => {
           setIsRecording(false);
+          setIsResetting(true);
+          setTimeout(() => setIsResetting(false), 400);
         };
 
         recognitionRef.current = recognition;
         recognition.start();
       } catch (e) {
-        console.error("Critical start error:", e);
-        setError("Não foi possível iniciar o microfone.");
-        setIsRecording(false);
+        console.error("Start crash:", e);
+        setError("Erro ao iniciar microfone.");
+        setIsResetting(false);
       }
-    }, 250); 
+    }, 300); 
   }, [killRecognition, history]);
 
   const toggleSession = () => {
-    if (isProcessing) return;
+    if (isProcessing || isResetting) return;
     if (isRecording) {
       killRecognition();
     } else {
@@ -187,13 +192,13 @@ export function VoidVoice() {
       <div className="relative group">
         <button
           onClick={toggleSession}
-          disabled={isProcessing}
+          disabled={isProcessing || isResetting}
           className={cn(
             "relative z-10 w-32 h-32 rounded-full flex items-center justify-center transition-all duration-500",
             isRecording 
               ? "bg-accent/20 scale-105 shadow-[0_0_50px_rgba(168,85,247,0.3)]" 
               : "bg-primary/5 border border-white/5 hover:border-accent/30",
-            isProcessing && "opacity-50 cursor-not-allowed"
+            (isProcessing || isResetting) && "opacity-30 cursor-not-allowed"
           )}
         >
           {isRecording ? (
@@ -204,7 +209,7 @@ export function VoidVoice() {
           ) : (
             <Mic className={cn(
               "w-10 h-10 transition-colors duration-500",
-              isProcessing ? "text-muted-foreground/10" : "text-muted-foreground/30 group-hover:text-accent/60"
+              (isProcessing || isResetting) ? "text-muted-foreground/10" : "text-muted-foreground/30 group-hover:text-accent/60"
             )} strokeWidth={1} />
           )}
         </button>
@@ -212,7 +217,7 @@ export function VoidVoice() {
 
       <div className="flex flex-col items-center gap-2">
         <p className="text-[10px] uppercase tracking-[0.4em] text-muted-foreground/30">
-          {isRecording ? "Capturando voz..." : isProcessing ? "Processando..." : "Toque para falar"}
+          {isRecording ? "Capturando voz..." : isProcessing ? "Processando..." : isResetting ? "Reiniciando..." : "Toque para falar"}
         </p>
       </div>
 
