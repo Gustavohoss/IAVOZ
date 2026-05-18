@@ -26,15 +26,18 @@ export function VoidVoice({ level = 'intermediate' }: VoidVoiceProps) {
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
+  const activeSessionId = useRef<number>(0);
 
-  // Limpeza absoluta de hardware para evitar o erro AUDIO-CAPTURE
+  // Limpeza profunda e garantida do hardware
   const killRecognition = useCallback(() => {
     if (recognitionRef.current) {
       const rec = recognitionRef.current;
+      // Removemos todos os ouvintes para evitar que o onend de uma sessão antiga mate uma nova
       rec.onstart = null;
       rec.onresult = null;
       rec.onerror = null;
       rec.onend = null;
+      
       try {
         rec.abort();
       } catch (e) {
@@ -48,7 +51,7 @@ export function VoidVoice({ level = 'intermediate' }: VoidVoiceProps) {
   const handleVoiceSubmit = async (text: string) => {
     if (!text || isProcessing) return;
     
-    // Matar reconhecimento imediatamente para liberar hardware durante processamento da IA
+    // Matar reconhecimento imediatamente para liberar hardware
     killRecognition();
     setIsProcessing(true);
     setAiResponse("");
@@ -79,43 +82,50 @@ export function VoidVoice({ level = 'intermediate' }: VoidVoiceProps) {
       }
     } catch (err) {
       console.error("Error processing voice:", err);
-      setError("Falha na resposta da IA. Tente novamente.");
+      setError("Failed to reach Obscura. Try again.");
     } finally {
       setIsProcessing(false);
-      // Cooldown de hardware mais longo para garantir que o SO liberou o mic
+      // Cooldown obrigatório de hardware para o SO liberar o mic
       setIsResetting(true);
-      setTimeout(() => setIsResetting(false), 1200);
+      setTimeout(() => setIsResetting(false), 1000);
     }
   };
 
   const startListening = useCallback(() => {
+    // 1. Matar qualquer sessão pendente
     killRecognition();
+    
+    // 2. Incrementar ID da sessão para ignorar eventos fantasmas
+    const currentSessionId = ++activeSessionId.current;
     setIsResetting(true);
 
-    // Tempo de espera para o hardware resetar
+    // 3. Pequeno delay para garantir que o hardware foi limpo
     setTimeout(() => {
+      if (currentSessionId !== activeSessionId.current) return;
+
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       
       if (!SpeechRecognition) {
-        setError("Seu navegador não suporta reconhecimento de voz.");
+        setError("Browser does not support voice recognition.");
         setIsResetting(false);
         return;
       }
 
       try {
         const recognition = new SpeechRecognition();
-        // Detecta o idioma baseado no nível, mas o fluxo da IA lidará com a resposta bilíngue
         recognition.lang = level === 'advanced' ? 'en-US' : 'pt-BR'; 
         recognition.continuous = false;
         recognition.interimResults = false;
 
         recognition.onstart = () => {
+          if (currentSessionId !== activeSessionId.current) return;
           setIsRecording(true);
           setIsResetting(false);
           setError(null);
         };
 
         recognition.onresult = (event: any) => {
+          if (currentSessionId !== activeSessionId.current) return;
           const text = event.results[0][0].transcript;
           if (text) {
             setTranscript(text);
@@ -124,40 +134,44 @@ export function VoidVoice({ level = 'intermediate' }: VoidVoiceProps) {
         };
 
         recognition.onerror = (event: any) => {
+          if (currentSessionId !== activeSessionId.current) return;
           console.error("Speech Recognition Error:", event.error);
+          
           if (event.error === 'audio-capture' || event.error === 'not-allowed') {
-            setError("Hardware ocupado. Aguarde o reset.");
+            setError("Mic busy. Wait for reset.");
           } else if (event.error === 'no-speech') {
-            setError("Nenhuma voz detectada.");
+            setError("No voice detected.");
           } else {
-            setError("Erro na captura. Tente novamente.");
+            setError("Capture error. Try again.");
           }
+          
           killRecognition();
           setIsResetting(true);
-          setTimeout(() => setIsResetting(false), 1000);
+          setTimeout(() => setIsResetting(false), 800);
         };
 
         recognition.onend = () => {
+          if (currentSessionId !== activeSessionId.current) return;
           setIsRecording(false);
-          killRecognition();
-          setIsResetting(true);
-          setTimeout(() => setIsResetting(false), 500);
+          // Não chamamos killRecognition aqui para evitar loops, deixamos para o próximo clique
         };
 
         recognitionRef.current = recognition;
         recognition.start();
       } catch (e) {
         console.error("Failed to start speech recognition:", e);
-        setError("Falha ao iniciar captura.");
+        setError("Failed to start capture.");
         setIsResetting(false);
       }
-    }, 400);
+    }, 300);
   }, [killRecognition, history, level]);
 
   const toggleSession = () => {
     if (isProcessing || isResetting) return;
     if (isRecording) {
       killRecognition();
+      setIsResetting(true);
+      setTimeout(() => setIsResetting(false), 500);
     } else {
       startListening();
     }
@@ -186,7 +200,7 @@ export function VoidVoice({ level = 'intermediate' }: VoidVoiceProps) {
         {isProcessing ? (
           <div className="flex flex-col items-center gap-2 py-4">
             <Loader2 className="w-5 h-5 text-accent animate-spin" strokeWidth={1} />
-            <span className="text-[10px] uppercase tracking-[0.2em] text-accent/50">Obscura está processando...</span>
+            <span className="text-[10px] uppercase tracking-[0.2em] text-accent/50">Obscura is thinking...</span>
           </div>
         ) : (
           aiResponse && (
@@ -227,7 +241,7 @@ export function VoidVoice({ level = 'intermediate' }: VoidVoiceProps) {
 
       <div className="flex flex-col items-center gap-2">
         <p className="text-[10px] uppercase tracking-[0.4em] text-muted-foreground/30 transition-all duration-300">
-          {isRecording ? "Ouvindo você..." : isProcessing ? "IA Gerando..." : isResetting ? "Limpando hardware..." : "Fale com Obscura"}
+          {isRecording ? "Listening to you..." : isProcessing ? "Generating..." : isResetting ? "Resetting hardware..." : "Talk to Obscura"}
         </p>
       </div>
 
