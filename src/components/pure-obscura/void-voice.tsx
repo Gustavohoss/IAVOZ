@@ -18,7 +18,7 @@ interface VoidVoiceProps {
 export function VoidVoice({ level = 'intermediate' }: VoidVoiceProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isResetting, setIsResetting] = useState(false); 
+  const [isResetting, setIsResetting] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [aiResponse, setAiResponse] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -26,20 +26,20 @@ export function VoidVoice({ level = 'intermediate' }: VoidVoiceProps) {
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
-  const activeSessionId = useRef<number>(0);
+  const sessionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Limpeza profunda e garantida do hardware
-  const killRecognition = useCallback(() => {
+  // Limpeza profunda e desvinculação total de eventos de hardware
+  const killHardware = useCallback(() => {
     if (recognitionRef.current) {
       const rec = recognitionRef.current;
-      // Removemos todos os ouvintes para evitar que o onend de uma sessão antiga mate uma nova
+      // 1. Removemos os ouvintes para que o onend/onerror de sessões mortas não afete o React
       rec.onstart = null;
       rec.onresult = null;
       rec.onerror = null;
       rec.onend = null;
       
       try {
-        rec.abort();
+        rec.abort(); // abort() é mais agressivo que stop() para liberar o hardware
       } catch (e) {
         // Silencioso
       }
@@ -51,12 +51,13 @@ export function VoidVoice({ level = 'intermediate' }: VoidVoiceProps) {
   const handleVoiceSubmit = async (text: string) => {
     if (!text || isProcessing) return;
     
-    // Matar reconhecimento imediatamente para liberar hardware
-    killRecognition();
+    // Matar o microfone IMEDIATAMENTE antes de começar o processamento da IA
+    killHardware();
     setIsProcessing(true);
     setAiResponse("");
     setError(null);
     
+    // Parar áudio anterior se houver
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
@@ -78,54 +79,48 @@ export function VoidVoice({ level = 'intermediate' }: VoidVoiceProps) {
       
       if (audioRef.current && result.audioDataUri) {
         audioRef.current.src = result.audioDataUri;
-        audioRef.current.play().catch(e => console.warn("Audio play blocked", e));
+        audioRef.current.play().catch(e => console.warn("Audio playback blocked", e));
       }
     } catch (err) {
       console.error("Error processing voice:", err);
-      setError("Failed to reach Obscura. Try again.");
+      setError("The connection to Obscura was lost. Try again.");
     } finally {
       setIsProcessing(false);
-      // Cooldown obrigatório de hardware para o SO liberar o mic
+      // Ativar cooldown de hardware para permitir que o SO libere o mic
       setIsResetting(true);
-      setTimeout(() => setIsResetting(false), 1000);
+      setTimeout(() => setIsResetting(false), 1200);
     }
   };
 
   const startListening = useCallback(() => {
-    // 1. Matar qualquer sessão pendente
-    killRecognition();
-    
-    // 2. Incrementar ID da sessão para ignorar eventos fantasmas
-    const currentSessionId = ++activeSessionId.current;
+    // 1. Limpeza total de qualquer resíduo
+    killHardware();
     setIsResetting(true);
+    setError(null);
 
-    // 3. Pequeno delay para garantir que o hardware foi limpo
+    // 2. Pequeno delay de hardware (crucial para evitar bloqueio no segundo turno)
     setTimeout(() => {
-      if (currentSessionId !== activeSessionId.current) return;
-
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       
       if (!SpeechRecognition) {
-        setError("Browser does not support voice recognition.");
+        setError("Voice capture is not supported in this browser.");
         setIsResetting(false);
         return;
       }
 
       try {
         const recognition = new SpeechRecognition();
+        // Configuração dinâmica de idioma baseada no nível
         recognition.lang = level === 'advanced' ? 'en-US' : 'pt-BR'; 
         recognition.continuous = false;
         recognition.interimResults = false;
 
         recognition.onstart = () => {
-          if (currentSessionId !== activeSessionId.current) return;
           setIsRecording(true);
           setIsResetting(false);
-          setError(null);
         };
 
         recognition.onresult = (event: any) => {
-          if (currentSessionId !== activeSessionId.current) return;
           const text = event.results[0][0].transcript;
           if (text) {
             setTranscript(text);
@@ -134,52 +129,47 @@ export function VoidVoice({ level = 'intermediate' }: VoidVoiceProps) {
         };
 
         recognition.onerror = (event: any) => {
-          if (currentSessionId !== activeSessionId.current) return;
           console.error("Speech Recognition Error:", event.error);
-          
           if (event.error === 'audio-capture' || event.error === 'not-allowed') {
-            setError("Mic busy. Wait for reset.");
+            setError("Microphone busy. Wait a moment.");
           } else if (event.error === 'no-speech') {
-            setError("No voice detected.");
+            setError("No speech detected.");
           } else {
-            setError("Capture error. Try again.");
+            setError("Recognition error. Please try again.");
           }
-          
-          killRecognition();
+          killHardware();
           setIsResetting(true);
-          setTimeout(() => setIsResetting(false), 800);
+          setTimeout(() => setIsResetting(false), 1000);
         };
 
         recognition.onend = () => {
-          if (currentSessionId !== activeSessionId.current) return;
           setIsRecording(false);
-          // Não chamamos killRecognition aqui para evitar loops, deixamos para o próximo clique
         };
 
         recognitionRef.current = recognition;
         recognition.start();
       } catch (e) {
         console.error("Failed to start speech recognition:", e);
-        setError("Failed to start capture.");
+        setError("Could not access microphone.");
         setIsResetting(false);
       }
-    }, 300);
-  }, [killRecognition, history, level]);
+    }, 400); // 400ms de silêncio de hardware
+  }, [killHardware, history, level]);
 
   const toggleSession = () => {
     if (isProcessing || isResetting) return;
     if (isRecording) {
-      killRecognition();
+      killHardware();
       setIsResetting(true);
-      setTimeout(() => setIsResetting(false), 500);
+      setTimeout(() => setIsResetting(false), 800);
     } else {
       startListening();
     }
   };
 
   useEffect(() => {
-    return () => killRecognition();
-  }, [killRecognition]);
+    return () => killHardware();
+  }, [killHardware]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] gap-8">
@@ -241,7 +231,7 @@ export function VoidVoice({ level = 'intermediate' }: VoidVoiceProps) {
 
       <div className="flex flex-col items-center gap-2">
         <p className="text-[10px] uppercase tracking-[0.4em] text-muted-foreground/30 transition-all duration-300">
-          {isRecording ? "Listening to you..." : isProcessing ? "Generating..." : isResetting ? "Resetting hardware..." : "Talk to Obscura"}
+          {isRecording ? "Listening..." : isProcessing ? "Thinking..." : isResetting ? "Resetting hardware..." : "Speak to Obscura"}
         </p>
       </div>
 
