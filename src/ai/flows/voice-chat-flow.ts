@@ -1,7 +1,6 @@
 'use server';
 /**
- * @fileOverview Fluxo otimizado para latência ultra-baixa.
- * Atua como um Professor de Inglês ágil e responsivo.
+ * @fileOverview Fluxo de latência ultra-baixa para o Obscura English Tutor.
  */
 
 import { ai } from '@/ai/genkit';
@@ -10,13 +9,13 @@ import wav from 'wav';
 import { googleAI } from '@genkit-ai/google-genai';
 
 const VoiceChatInputSchema = z.object({
-  userMessage: z.string().describe('O texto transcrito da fala do usuário.'),
+  userMessage: z.string().describe('Texto transcrito da fala do usuário.'),
 });
 export type VoiceChatInput = z.infer<typeof VoiceChatInputSchema>;
 
 const VoiceChatOutputSchema = z.object({
-  text: z.string().describe('A resposta em texto da IA.'),
-  audioDataUri: z.string().describe('A resposta em áudio formatada como data URI WAV.'),
+  text: z.string().describe('Resposta em texto.'),
+  audioDataUri: z.string().describe('Resposta em áudio WAV.'),
 });
 export type VoiceChatOutput = z.infer<typeof VoiceChatOutputSchema>;
 
@@ -56,20 +55,20 @@ const voiceChatFlow = ai.defineFlow(
     outputSchema: VoiceChatOutputSchema,
   },
   async (input) => {
-    // Processamento ultra-rápido usando ai.generate diretamente
+    // Resposta ultra-curta para minimizar tempo de geração e síntese
     const { text } = await ai.generate({
-      system: `Você é um professor de inglês ágil.
-      REGRAS:
-      1. RESPONDA NO MESMO IDIOMA DO USUÁRIO.
-      2. Se ele falar em português, responda em português, ensine o termo em inglês equivalente e pergunte se quer aprender o básico ou algo específico.
-      3. Seja EXTREMAMENTE conciso (máximo 2 frases curtas).
-      4. Foco total em velocidade e utilidade.`,
+      system: `Você é Obscura, um professor de inglês ágil.
+      REGRAS DE OURO:
+      1. RESPONDA NO MESMO IDIOMA QUE O USUÁRIO FALAR.
+      2. Se ele falar português, responda em português, ensine o termo em inglês e faça uma pergunta curta.
+      3. Seja EXTREMAMENTE CONCISO. Máximo de 15 palavras.
+      4. Foco em fluidez e velocidade.`,
       prompt: input.userMessage,
     });
 
-    if (!text) throw new Error('No response');
+    if (!text) throw new Error('No response from AI');
 
-    // TTS rápido usando o modelo flash
+    // Síntese de voz rápida com Gemini Flash
     const { media } = await ai.generate({
       model: googleAI.model('gemini-2.5-flash-preview-tts'),
       config: {
@@ -83,7 +82,7 @@ const voiceChatFlow = ai.defineFlow(
       prompt: text,
     });
 
-    if (!media || !media.url) throw new Error('TTS failed');
+    if (!media || !media.url) throw new Error('TTS synthesis failed');
 
     const pcmBase64 = media.url.substring(media.url.indexOf(',') + 1);
     const wavBase64 = await toWav(Buffer.from(pcmBase64, 'base64'));

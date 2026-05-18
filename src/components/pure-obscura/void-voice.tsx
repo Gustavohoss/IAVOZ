@@ -15,27 +15,23 @@ export function VoidVoice() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
 
-  const cleanupRecognition = useCallback(() => {
+  // Limpeza profunda da instância de voz
+  const killRecognition = useCallback(() => {
     if (recognitionRef.current) {
+      const rec = recognitionRef.current;
+      // Remove todos os handlers para que nenhum evento atrase o encerramento
+      rec.onstart = null;
+      rec.onresult = null;
+      rec.onerror = null;
+      rec.onend = null;
       try {
-        // Remove todos os handlers para evitar vazamento de memória e conflitos
-        recognitionRef.current.onstart = null;
-        recognitionRef.current.onresult = null;
-        recognitionRef.current.onerror = null;
-        recognitionRef.current.onend = null;
-        recognitionRef.current.abort();
+        rec.abort(); // Abort é mais agressivo e libera o mic mais rápido que stop()
       } catch (e) {
-        console.warn("Silent cleanup error:", e);
+        // Ignora erros de encerramento
       }
       recognitionRef.current = null;
     }
-  }, []);
-
-  const stopAudio = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-    }
+    setIsRecording(false);
   }, []);
 
   const handleVoiceSubmit = async (text: string) => {
@@ -44,7 +40,12 @@ export function VoidVoice() {
     setIsProcessing(true);
     setAiResponse("");
     setError(null);
-    stopAudio();
+    
+    // Para o áudio anterior se houver
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
     
     try {
       const result = await voiceChat({ userMessage: text });
@@ -52,59 +53,57 @@ export function VoidVoice() {
       
       if (audioRef.current) {
         audioRef.current.src = result.audioDataUri;
-        audioRef.current.play().catch(() => {
-          console.warn("Autoplay blocked");
-        });
+        audioRef.current.play().catch(e => console.warn("Audio play blocked", e));
       }
     } catch (err) {
       console.error("Error processing voice:", err);
-      setError("Erro ao processar.");
+      setError("Falha na resposta.");
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const startRecording = useCallback(() => {
-    // 1. Limpa qualquer tentativa anterior agressivamente
-    cleanupRecognition();
-    stopAudio();
+  const startListening = useCallback(() => {
+    // 1. Mata qualquer sessão anterior agressivamente
+    killRecognition();
 
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setError("Navegador não suportado.");
-      return;
-    }
-
-    // 2. Pequeno delay para o hardware "respirar"
+    // 2. Delay necessário para o hardware do OS liberar o microfone
     setTimeout(() => {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      
+      if (!SpeechRecognition) {
+        setError("Navegador não suporta voz.");
+        return;
+      }
+
       try {
         const recognition = new SpeechRecognition();
-        // Configuramos para pt-BR para entender suas dúvidas em português e inglês
-        recognition.lang = 'pt-BR';
+        recognition.lang = 'pt-BR'; // Entende PT e EN melhor assim
         recognition.continuous = false;
         recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
 
         recognition.onstart = () => {
           setIsRecording(true);
           setError(null);
+          setTranscript("");
+          setAiResponse("");
         };
 
         recognition.onresult = (event: any) => {
           const text = event.results[0][0].transcript;
           if (text) {
             setTranscript(text);
-            // Abortamos imediatamente para ganhar milissegundos de latência
-            recognition.abort();
             handleVoiceSubmit(text);
           }
         };
 
         recognition.onerror = (event: any) => {
-          // Se o erro for de captura, damos um feedback claro
+          console.error("Recognition error:", event.error);
           if (event.error === 'audio-capture') {
-            setError("Microfone em uso ou não encontrado.");
+            setError("Microfone ocupado. Tente de novo.");
           } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
-            setError(`Erro: ${event.error.toUpperCase()}`);
+            setError(`Erro: ${event.error}`);
           }
           setIsRecording(false);
         };
@@ -116,51 +115,47 @@ export function VoidVoice() {
         recognitionRef.current = recognition;
         recognition.start();
       } catch (e) {
-        setError("Falha ao abrir microfone.");
+        console.error("Critical start error:", e);
+        setError("Erro ao iniciar captura.");
         setIsRecording(false);
       }
-    }, 100);
-  }, [cleanupRecognition, stopAudio]);
+    }, 250); // Delay de segurança para reset de hardware
+  }, [killRecognition]);
 
   const toggleSession = () => {
     if (isProcessing) return;
     if (isRecording) {
-      cleanupRecognition();
-      setIsRecording(false);
+      killRecognition();
     } else {
-      setTranscript("");
-      setAiResponse("");
-      startRecording();
+      startListening();
     }
   };
 
+  // Limpeza ao desmontar componente
   useEffect(() => {
-    return () => {
-      cleanupRecognition();
-      stopAudio();
-    };
-  }, [cleanupRecognition, stopAudio]);
+    return () => killRecognition();
+  }, [killRecognition]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] gap-8">
       <div className="text-center space-y-4 max-w-lg px-6 min-h-[160px] flex flex-col justify-end">
         {error && (
-          <div className="flex items-center justify-center gap-2 text-destructive/80 text-[10px] uppercase tracking-widest">
+          <div className="flex items-center justify-center gap-2 text-destructive/80 text-[10px] uppercase tracking-widest animate-pulse">
             <AlertCircle size={12} />
             {error}
           </div>
         )}
 
         {transcript && (
-          <p className="text-muted-foreground/40 text-[10px] uppercase tracking-widest">
-            Você: "{transcript}"
+          <p className="text-muted-foreground/40 text-[10px] uppercase tracking-widest italic">
+            "{transcript}"
           </p>
         )}
         
         {isProcessing ? (
           <div className="flex flex-col items-center gap-2 py-4">
             <Loader2 className="w-5 h-5 text-accent animate-spin" strokeWidth={1} />
-            <span className="text-[10px] uppercase tracking-[0.2em] text-accent/50">Analisando...</span>
+            <span className="text-[10px] uppercase tracking-[0.2em] text-accent/50">Obscura está pensando...</span>
           </div>
         ) : (
           aiResponse && (
@@ -180,27 +175,28 @@ export function VoidVoice() {
           className={cn(
             "relative z-10 w-32 h-32 rounded-full flex items-center justify-center transition-all duration-500",
             isRecording 
-              ? "bg-accent/20 scale-105 shadow-[0_0_40px_rgba(168,85,247,0.2)]" 
+              ? "bg-accent/20 scale-105 shadow-[0_0_50px_rgba(168,85,247,0.3)]" 
               : "bg-primary/5 border border-white/5 hover:border-accent/30",
             isProcessing && "opacity-50 cursor-not-allowed"
           )}
         >
           {isRecording ? (
             <div className="relative flex items-center justify-center">
-              <div className="absolute w-20 h-20 rounded-full border border-accent/30 animate-ping" />
+              <div className="absolute w-24 h-24 rounded-full border border-accent/40 animate-ping" />
               <Square className="w-8 h-8 text-accent" strokeWidth={1} fill="currentColor" />
             </div>
-          ) : isProcessing ? (
-            <Loader2 className="w-10 h-10 text-muted-foreground/20 animate-spin" strokeWidth={1} />
           ) : (
-            <Mic className="w-10 h-10 text-muted-foreground/30 group-hover:text-accent/50 transition-colors" strokeWidth={1} />
+            <Mic className={cn(
+              "w-10 h-10 transition-colors duration-500",
+              isProcessing ? "text-muted-foreground/10" : "text-muted-foreground/30 group-hover:text-accent/60"
+            )} strokeWidth={1} />
           )}
         </button>
       </div>
 
       <div className="flex flex-col items-center gap-2">
         <p className="text-[10px] uppercase tracking-[0.4em] text-muted-foreground/30">
-          {isRecording ? "Ouvindo..." : "Toque para falar"}
+          {isRecording ? "Capturando voz..." : isProcessing ? "Processando..." : "Toque para falar"}
         </p>
       </div>
 
