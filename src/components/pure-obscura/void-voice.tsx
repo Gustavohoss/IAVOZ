@@ -1,8 +1,9 @@
+
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { voiceChat } from "@/ai/flows/voice-chat-flow";
-import { Mic, Loader2, AlertCircle, Square, MessageSquare, X, ChevronLeft, Volume2 } from "lucide-react";
+import { Mic, Loader2, MessageSquare, X, ChevronLeft, Volume2, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EnglishLevel } from "@/app/page";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -25,12 +26,14 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
   const [transcript, setTranscript] = useState("");
   const [aiResponse, setAiResponse] = useState("");
   const [history, setHistory] = useState<Message[]>([]);
+  const [audioBlocked, setAudioBlocked] = useState(false);
+  const [lastAudioUri, setLastAudioUri] = useState<string | null>(null);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Inicializa o reconhecimento uma única vez, conforme o código de Aura
+  // Inicializa o reconhecimento uma única vez (padrão estável)
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     
@@ -38,7 +41,6 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
       const recognition = new SpeechRecognition();
       recognition.continuous = false;
       recognition.interimResults = true;
-      // Escolhe idioma baseado no nível
       recognition.lang = level === 'advanced' ? 'en-US' : 'pt-BR';
 
       recognition.onstart = () => setIsRecording(true);
@@ -84,6 +86,21 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
     }
   }, [history]);
 
+  const playAudio = async (uri: string) => {
+    if (!audioRef.current) return;
+    
+    setAudioBlocked(false);
+    audioRef.current.src = uri;
+    
+    try {
+      await audioRef.current.play();
+    } catch (err) {
+      console.warn("Autoplay blocked", err);
+      setAudioBlocked(true);
+      setLastAudioUri(uri);
+    }
+  };
+
   const handleAIQuery = async (text: string) => {
     if (!text.trim() || isProcessing) return;
     
@@ -107,9 +124,7 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
       setAiResponse(result.text);
       
       if (result.audioDataUri) {
-        const audio = new Audio(result.audioDataUri);
-        audioRef.current = audio;
-        audio.play().catch(e => console.warn("Audio play blocked", e));
+        playAudio(result.audioDataUri);
       }
     } catch (err) {
       console.error("AI Error:", err);
@@ -127,9 +142,10 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
   const startListening = () => {
     if (isProcessing || isRecording) return;
     
-    // Desbloqueia áudio (hack de interação)
+    // Unlock áudio trick
     const silenceUri = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==";
-    new Audio(silenceUri).play().catch(() => {});
+    const silent = new Audio(silenceUri);
+    silent.play().catch(() => {});
 
     try {
       recognitionRef.current.start();
@@ -151,38 +167,50 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
           <span className="text-[10px] uppercase tracking-[0.2em] font-bold">Menu</span>
         </button>
 
-        <div className="relative">
-          <button 
-            onClick={() => setShowHistory(!showHistory)}
-            className="flex items-center gap-2 px-4 py-2 bg-white/5 backdrop-blur-xl border border-white/5 rounded-lg text-muted-foreground hover:text-primary transition-all duration-500"
-          >
-            <MessageSquare size={16} strokeWidth={1.5} />
-            <span className="text-[10px] uppercase tracking-[0.2em] font-bold">History</span>
-          </button>
-
-          {showHistory && (
-            <div className="absolute top-14 right-0 w-80 h-[450px] bg-background/95 backdrop-blur-3xl border border-white/5 rounded-xl shadow-2xl p-4 flex flex-col z-[100] animate-in fade-in slide-in-from-top-4 duration-500">
-              <div className="flex justify-between items-center mb-4 border-b border-white/5 pb-2">
-                <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Session Log</span>
-                <button onClick={() => setShowHistory(false)} className="p-1 hover:text-accent">
-                  <X size={16} />
-                </button>
-              </div>
-              <ScrollArea className="flex-1">
-                <div className="space-y-4 pr-4">
-                  {history.map((msg, i) => (
-                    <div key={i} className={cn("flex flex-col gap-1", msg.role === 'user' ? "items-end" : "items-start")}>
-                      <span className="text-[7px] uppercase tracking-widest opacity-20 font-bold">{msg.role === 'user' ? 'You' : 'Obscura'}</span>
-                      <p className={cn("text-[10px] p-2 rounded-lg max-w-[90%] leading-relaxed", msg.role === 'user' ? "bg-accent/10 text-primary" : "bg-primary/5 text-muted-foreground border border-white/5")}>
-                        {msg.content}
-                      </p>
-                    </div>
-                  ))}
-                  <div ref={scrollRef} />
-                </div>
-              </ScrollArea>
-            </div>
+        <div className="flex gap-4">
+          {audioBlocked && lastAudioUri && (
+            <button 
+              onClick={() => playAudio(lastAudioUri)}
+              className="flex items-center gap-2 px-4 py-2 bg-accent/20 backdrop-blur-xl border border-accent/30 rounded-lg text-accent animate-bounce"
+            >
+              <Play size={16} fill="currentColor" />
+              <span className="text-[10px] uppercase tracking-[0.2em] font-bold">Play Voice</span>
+            </button>
           )}
+
+          <div className="relative">
+            <button 
+              onClick={() => setShowHistory(!showHistory)}
+              className="flex items-center gap-2 px-4 py-2 bg-white/5 backdrop-blur-xl border border-white/5 rounded-lg text-muted-foreground hover:text-primary transition-all duration-500"
+            >
+              <MessageSquare size={16} strokeWidth={1.5} />
+              <span className="text-[10px] uppercase tracking-[0.2em] font-bold">History</span>
+            </button>
+
+            {showHistory && (
+              <div className="absolute top-14 right-0 w-80 h-[450px] bg-background/95 backdrop-blur-3xl border border-white/5 rounded-xl shadow-2xl p-4 flex flex-col z-[100] animate-in fade-in slide-in-from-top-4 duration-500">
+                <div className="flex justify-between items-center mb-4 border-b border-white/5 pb-2">
+                  <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Session Log</span>
+                  <button onClick={() => setShowHistory(false)} className="p-1 hover:text-accent">
+                    <X size={16} />
+                  </button>
+                </div>
+                <ScrollArea className="flex-1">
+                  <div className="space-y-4 pr-4">
+                    {history.map((msg, i) => (
+                      <div key={i} className={cn("flex flex-col gap-1", msg.role === 'user' ? "items-end" : "items-start")}>
+                        <span className="text-[7px] uppercase tracking-widest opacity-20 font-bold">{msg.role === 'user' ? 'You' : 'Obscura'}</span>
+                        <p className={cn("text-[10px] p-2 rounded-lg max-w-[90%] leading-relaxed", msg.role === 'user' ? "bg-accent/10 text-primary" : "bg-primary/5 text-muted-foreground border border-white/5")}>
+                          {msg.content}
+                        </p>
+                      </div>
+                    ))}
+                    <div ref={scrollRef} />
+                  </div>
+                </ScrollArea>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
