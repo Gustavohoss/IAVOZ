@@ -30,17 +30,17 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
 
-  // RESET AGRESSIVO: Mata qualquer processo de hardware pendurado
+  // RESET AGRESSIVO: Mata qualquer processo de hardware pendurado e limpa memória
   const killHardware = useCallback(() => {
     if (recognitionRef.current) {
       const rec = recognitionRef.current;
-      // Remove handlers para evitar updates de estado fantasmas
+      // Remove todos os ouvintes para evitar que eventos fantasmas disparem após o descarte
       rec.onstart = null;
       rec.onresult = null;
       rec.onerror = null;
       rec.onend = null;
       try {
-        rec.abort(); // Abort é mais imediato que stop()
+        rec.abort(); // Abort força o encerramento imediato do hardware
       } catch (e) {}
       recognitionRef.current = null;
     }
@@ -50,7 +50,7 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
   const handleAIQuery = async (text: string) => {
     if (!text || isProcessing) return;
     
-    // Mata o hardware no instante que capturou o texto
+    // Mata o hardware IMEDIATAMENTE após capturar o texto
     killHardware();
     setIsProcessing(true);
     setAiResponse("");
@@ -79,18 +79,19 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
       setError("Communication failed. Try again.");
     } finally {
       setIsProcessing(false);
-      // Tempo de respiro para o SO liberar o mic
+      // Tempo de respiro para o SO liberar o mic totalmente (Cooldown)
       setIsHardwareCooling(true);
-      setTimeout(() => setIsHardwareCooling(false), 1200);
+      setTimeout(() => setIsHardwareCooling(false), 800);
     }
   };
 
   const initRecognition = useCallback(() => {
+    // Garante que o hardware está morto antes de tentar nascer de novo
     killHardware();
     setError(null);
     setTranscript("");
 
-    // Delay atômico para garantir limpeza de buffer
+    // Pequeno delay atômico para garantir que o navegador "respire"
     setTimeout(() => {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       
@@ -101,11 +102,14 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
 
       try {
         const recognition = new SpeechRecognition();
-        recognition.lang = level === 'advanced' ? 'en-US' : 'pt-BR';
+        recognition.lang = level === 'advanced' ? 'en-US' : (level === 'beginner' ? 'pt-BR' : 'en-US');
         recognition.continuous = false;
         recognition.interimResults = false;
 
-        recognition.onstart = () => setIsRecording(true);
+        recognition.onstart = () => {
+          setIsRecording(true);
+          setError(null);
+        };
         
         recognition.onresult = (event: any) => {
           const text = event.results[0][0].transcript;
@@ -117,20 +121,28 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
 
         recognition.onerror = (event: any) => {
           console.error("Hardware Error:", event.error);
-          if (event.error === 'audio-capture') setError("Mic locked. Wait...");
-          else if (event.error === 'not-allowed') setError("Access denied.");
-          else setError("Retry.");
+          if (event.error === 'audio-capture') {
+            setError("Mic busy. Click again.");
+            // Se der erro de captura, forçamos um reset total
+            killHardware();
+          } else if (event.error === 'not-allowed') {
+            setError("Mic access denied.");
+          } else {
+            setError("Mic failed. Retry.");
+          }
           killHardware();
           setIsHardwareCooling(true);
           setTimeout(() => setIsHardwareCooling(false), 1000);
         };
 
-        recognition.onend = () => setIsRecording(false);
+        recognition.onend = () => {
+          setIsRecording(false);
+        };
 
         recognitionRef.current = recognition;
         recognition.start();
       } catch (e) {
-        setError("Mic error.");
+        setError("Hardware locked.");
         setIsHardwareCooling(false);
       }
     }, 150);
@@ -148,8 +160,8 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
 
   return (
     <div className="w-full h-screen flex flex-col items-center justify-center relative bg-background">
-      {/* Controles do Topo - Fixados */}
-      <div className="fixed top-8 inset-x-8 flex justify-between items-center z-50">
+      {/* Controles do Topo - FIXOS NO TOPO */}
+      <div className="fixed top-8 inset-x-8 flex justify-between items-start z-50">
         <button 
           onClick={onBack}
           className="group flex items-center gap-2 px-4 py-2 bg-white/5 backdrop-blur-xl border border-white/5 rounded-lg text-muted-foreground hover:text-primary transition-all duration-500"
@@ -170,7 +182,7 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
           {showHistory && (
             <div className="absolute top-14 right-0 w-80 h-[500px] bg-background/95 backdrop-blur-3xl border border-white/5 rounded-xl shadow-2xl p-4 flex flex-col animate-in fade-in slide-in-from-top-4 duration-500 z-[100]">
               <div className="flex justify-between items-center mb-4 border-b border-white/5 pb-2">
-                <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Logs</span>
+                <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Session Logs</span>
                 <button onClick={() => setShowHistory(false)} className="p-1 hover:text-accent">
                   <X size={16} />
                 </button>
@@ -178,7 +190,7 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
               <ScrollArea className="flex-1">
                 <div className="space-y-6 pr-4">
                   {history.length === 0 && (
-                    <p className="text-[10px] uppercase text-center text-muted-foreground/10 py-20 tracking-widest">Empty</p>
+                    <p className="text-[10px] uppercase text-center text-muted-foreground/10 py-20 tracking-widest">No activity yet</p>
                   )}
                   {history.map((msg, i) => (
                     <div key={i} className={cn("flex flex-col gap-2", msg.role === 'user' ? "items-end" : "items-start")}>
@@ -195,7 +207,7 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
         </div>
       </div>
 
-      {/* Interface Central */}
+      {/* Interface Central - MICROFONE NO MEIO */}
       <div className="flex flex-col items-center justify-center gap-12 w-full max-w-2xl px-8">
         <div className="h-20 flex flex-col items-center justify-center gap-4 text-center">
           {error ? (
@@ -210,7 +222,7 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
           )}
         </div>
 
-        {/* Círculo do Microfone Central */}
+        {/* Botão de Microfone Centralizado */}
         <div className="relative">
           <button
             onClick={toggleRecording}
@@ -235,10 +247,10 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
           </button>
         </div>
 
-        {/* Resposta da IA */}
+        {/* Resposta da IA - Abaixo do Botão */}
         <div className="min-h-[160px] w-full flex items-center justify-center">
           {!isProcessing && aiResponse && (
-            <p className="text-primary font-light text-xl md:text-2xl tracking-wide leading-relaxed text-center fade-in-slow">
+            <p className="text-primary font-light text-xl md:text-2xl tracking-wide leading-relaxed text-center fade-in-slow max-w-lg">
               {aiResponse}
             </p>
           )}
