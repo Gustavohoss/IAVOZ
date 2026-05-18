@@ -73,28 +73,31 @@ const voiceChatFlow = ai.defineFlow(
     });
 
     const levelInstructions = {
-      beginner: "Speak predominantly in PORTUGUESE. Explain simple English phrases and immediately translate. Be a mentor.",
-      intermediate: "Mix English and Portuguese naturally. Use common idioms. Encourage the user.",
+      beginner: "Speak predominantly in PORTUGUESE. Explain simple English phrases and immediately translate.",
+      intermediate: "Mix English and Portuguese naturally. Use common idioms.",
       advanced: "Speak EXCLUSIVELY in English. Use sophisticated vocabulary."
     };
 
     const { text } = await ai.generate({
       system: `You are Obscura, a sophisticated AI English Tutor.
       
-      PERSONALITY RULE: Be charismatic but extremely CONCISE. 
-      - Default responses must be under 2 sentences. 
-      - Only give long explanations if the user makes a mistake, asks a direct question about grammar/vocabulary, or asks you to explain something.
-      - Start with a very short greeting if it's the first message.
+      PERSONALITY RULE: Be extremely CONCISE. 
+      - Responses MUST be under 2 sentences. 
+      - Only give long explanations IF the user explicitly asks "Why?" or "Explain this".
+      - Be charismatic but direct.
       
       LEVEL CONTEXT: ${levelInstructions[level]}
       
       LANGUAGE MIRRORING:
-      1. If the user speaks PORTUGUESE, respond in PORTUGUESE (with English pedagogical focus).
+      1. If the user speaks PORTUGUESE, respond in PORTUGUESE (with English focus).
       2. If the user speaks ENGLISH, respond in ENGLISH.`,
       messages: messages,
     });
 
     if (!text) throw new Error('Void communication failed');
+
+    // Limpa o texto para o TTS
+    const cleanText = text.replace(/[*_#`~]/g, '').trim();
 
     const { media } = await ai.generate({
       model: googleAI.model('gemini-2.5-flash-preview-tts'),
@@ -106,7 +109,7 @@ const voiceChatFlow = ai.defineFlow(
           },
         },
       },
-      prompt: text,
+      prompt: cleanText,
     });
 
     if (!media || !media.url) throw new Error('TTS failed');
@@ -115,7 +118,7 @@ const voiceChatFlow = ai.defineFlow(
     const wavBase64 = await toWav(Buffer.from(pcmBase64, 'base64'));
 
     return {
-      text,
+      text: cleanText,
       audioDataUri: `data:audio/wav;base64,${wavBase64}`,
     };
   }
