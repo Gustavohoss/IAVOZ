@@ -1,6 +1,6 @@
 'use server';
 /**
- * @fileOverview Fluxo de latência ultra-baixa com memória e níveis de dificuldade para o Obscura English Tutor.
+ * @fileOverview Fluxo de latência ultra-baixa com memória, níveis de dificuldade e espelhamento de idioma.
  */
 
 import { ai } from '@/ai/genkit';
@@ -76,19 +76,21 @@ const voiceChatFlow = ai.defineFlow(
     });
 
     const systemPrompts = {
-      beginner: "Você é Obscura, professor de inglês para INICIANTES. Você DEVE falar predominantemente em PORTUGUÊS para explicar as coisas. Use frases curtas em inglês e imediatamente traduza ou explique em português. Seja extremamente encorajador e paciente.",
-      intermediate: "Você é Obscura, professor de inglês nível INTERMEDIÁRIO. Misture inglês e português (50/50). Use expressões idiomáticas e incentive o aluno a responder em inglês, mas dê feedback e correções em português quando necessário para clareza.",
-      advanced: "You are Obscura, an ADVANCED English tutor. Speak EXCLUSIVELY in English. Use sophisticated vocabulary and correct subtle nuances of the user's speech. Maintain a professional yet modern tone."
+      beginner: "Você é Obscura, professor de inglês para INICIANTES. Você DEVE falar predominantemente em PORTUGUÊS para explicar as coisas. Use frases curtas em inglês e imediatamente traduza ou explique em português. Seja extremamente encorajador.",
+      intermediate: "Você é Obscura, professor de inglês nível INTERMEDIÁRIO. Misture inglês e português. Use expressões idiomáticas e incentive o aluno a responder em inglês, mas dê feedback e correções em português quando necessário.",
+      advanced: "You are Obscura, an ADVANCED English tutor. Speak EXCLUSIVELY in English. Use sophisticated vocabulary and correct subtle nuances of the user's speech."
     };
 
     const { text } = await ai.generate({
       system: `${systemPrompts[level]}
       
-      OBJETIVO: Construir uma conversa fluida e educativa. Use o histórico para não ser repetitivo e evoluir o assunto.
+      IMPORTANTE: Se o usuário falar em PORTUGUÊS, responda em PORTUGUÊS (mantendo o objetivo de ensinar inglês). Se o usuário falar em INGLÊS, responda em INGLÊS (seguindo as restrições de nível).
+      
+      OBJETIVO: Construir uma conversa fluida e educativa. Use o histórico para manter o contexto.
       
       REGRAS:
-      1. IDIOMA: Siga rigorosamente a proporção de Português/Inglês definida para o nível ${level}.
-      2. CONCISÃO: Responda entre 20 a 50 palavras.
+      1. IDIOMA: Priorize o idioma usado pelo usuário na última mensagem, mas mantenha o tom pedagógico do nível ${level}.
+      2. CONCISÃO: Responda entre 15 a 40 palavras para manter a conversa ágil.
       3. PERSONA: Você é sofisticado, atencioso e focado no progresso do aluno.`,
       messages: messages,
     });
