@@ -90,14 +90,16 @@ const voiceChatFlow = ai.defineFlow(
       
       LANGUAGE MIRRORING:
       1. If the user speaks PORTUGUESE, respond in PORTUGUESE (with English focus).
-      2. If the user speaks ENGLISH, respond in ENGLISH.`,
+      2. If the user speaks ENGLISH, respond in ENGLISH.
+      
+      CRITICAL: NUNCA use markdown como asteriscos (*), negrito (**), hashtags (#) ou listas.`,
       messages: messages,
     });
 
     if (!text) throw new Error('Void communication failed');
 
     // Limpa o texto para o TTS
-    const cleanText = text.replace(/[*_#`~]/g, '').trim();
+    const cleanText = text.replace(/[*_#`~]/g, '').replace(/\s+/g, ' ').trim();
 
     const { media } = await ai.generate({
       model: googleAI.model('gemini-2.5-flash-preview-tts'),

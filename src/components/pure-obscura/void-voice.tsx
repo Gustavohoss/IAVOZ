@@ -2,10 +2,11 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { voiceChat } from "@/ai/flows/voice-chat-flow";
-import { Mic, Loader2, AlertCircle, Square, MessageSquare, X, ChevronLeft } from "lucide-react";
+import { Mic, Loader2, AlertCircle, Square, MessageSquare, X, ChevronLeft, Volume2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EnglishLevel } from "@/app/page";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { toast } from "@/hooks/use-toast";
 
 type Message = {
   role: 'user' | 'model';
@@ -23,34 +24,71 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
   const [showHistory, setShowHistory] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [aiResponse, setAiResponse] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<Message[]>([]);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  // RESET RADICAL: Força o navegador a liberar o hardware totalmente
-  const resetHardware = useCallback(() => {
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.onstart = null;
-        recognitionRef.current.onresult = null;
-        recognitionRef.current.onerror = null;
-        recognitionRef.current.onend = null;
-        recognitionRef.current.abort();
-      } catch (e) {}
-      recognitionRef.current = null;
+  // Inicializa o reconhecimento uma única vez, conforme o código de Aura
+  useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      // Escolhe idioma baseado no nível
+      recognition.lang = level === 'advanced' ? 'en-US' : 'pt-BR';
+
+      recognition.onstart = () => setIsRecording(true);
+
+      recognition.onresult = (event: any) => {
+        const current = event.resultIndex;
+        const result = event.results[current];
+        const text = result[0].transcript;
+        setTranscript(text);
+
+        if (result.isFinal) {
+          handleAIQuery(text);
+        }
+      };
+
+      recognition.onend = () => {
+        setIsRecording(false);
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error('Speech Recognition Error:', event.error);
+        setIsRecording(false);
+        if (event.error === 'not-allowed') {
+          toast({
+            variant: "destructive",
+            title: "Microfone Bloqueado",
+            description: "Permita o acesso ao microfone nas configurações.",
+          });
+        }
+      };
+
+      recognitionRef.current = recognition;
     }
-    setIsRecording(false);
-  }, []);
+
+    return () => {
+      if (recognitionRef.current) recognitionRef.current.stop();
+    };
+  }, [level]);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [history]);
 
   const handleAIQuery = async (text: string) => {
-    if (!text || isProcessing) return;
+    if (!text.trim() || isProcessing) return;
     
-    resetHardware(); // Libera o mic IMEDIATAMENTE antes de processar
     setIsProcessing(true);
     setAiResponse("");
-    setError(null);
     
     try {
       const result = await voiceChat({ 
@@ -59,80 +97,50 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
         level: level
       });
       
-      setAiResponse(result.text);
-      setHistory(prev => [
-        ...prev,
+      const newHistory: Message[] = [
+        ...history,
         { role: 'user', content: text },
         { role: 'model', content: result.text }
-      ]);
+      ];
       
-      if (audioRef.current && result.audioDataUri) {
-        audioRef.current.src = result.audioDataUri;
-        audioRef.current.play().catch(e => console.warn("Audio blocked", e));
+      setHistory(newHistory);
+      setAiResponse(result.text);
+      
+      if (result.audioDataUri) {
+        const audio = new Audio(result.audioDataUri);
+        audioRef.current = audio;
+        audio.play().catch(e => console.warn("Audio play blocked", e));
       }
     } catch (err) {
-      setError("Failed to connect.");
+      console.error("AI Error:", err);
+      toast({
+        variant: "destructive",
+        title: "Erro de Comunicação",
+        description: "Não foi possível conectar com a Obscura.",
+      });
     } finally {
       setIsProcessing(false);
+      setTranscript("");
     }
   };
 
   const startListening = () => {
-    resetHardware();
-    setError(null);
-    setTranscript("");
+    if (isProcessing || isRecording) return;
+    
+    // Desbloqueia áudio (hack de interação)
+    const silenceUri = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==";
+    new Audio(silenceUri).play().catch(() => {});
 
-    // O pulo do gato: Esperar 150ms para o SO fechar o canal anterior antes de abrir o novo
-    setTimeout(() => {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      
-      if (!SpeechRecognition) {
-        setError("Browser not supported.");
-        return;
-      }
-
-      const recognition = new SpeechRecognition();
-      // Se for iniciante ou intermediário, aceita português para não dar erro de fala não detectada
-      recognition.lang = level === 'advanced' ? 'en-US' : 'pt-BR';
-      recognition.continuous = false;
-      recognition.interimResults = false;
-
-      recognition.onstart = () => setIsRecording(true);
-      
-      recognition.onresult = (event: any) => {
-        const text = event.results[0][0].transcript;
-        if (text) {
-          setTranscript(text);
-          handleAIQuery(text);
-        }
-      };
-
-      recognition.onerror = (event: any) => {
-        if (event.error === 'audio-capture') {
-          setError("Mic busy. Click again.");
-        } else {
-          setError("Mic error. Retry.");
-        }
-        resetHardware();
-      };
-
-      recognition.onend = () => setIsRecording(false);
-
-      recognitionRef.current = recognition;
-      try {
-        recognition.start();
-      } catch (e) {
-        resetHardware();
-      }
-    }, 150);
+    try {
+      recognitionRef.current.start();
+    } catch (e) {
+      console.error("Failed to start recognition:", e);
+      setIsRecording(false);
+    }
   };
 
-  useEffect(() => {
-    return () => resetHardware();
-  }, [resetHardware]);
-
   return (
-    <div className="w-full h-screen flex flex-col items-center justify-center relative bg-[#050505]">
+    <div className="w-full h-screen flex flex-col items-center justify-center relative bg-[#050505] overflow-hidden">
       {/* CONTROLES FIXOS NO TOPO */}
       <div className="fixed top-8 inset-x-8 flex justify-between items-start z-50">
         <button 
@@ -140,7 +148,7 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
           className="flex items-center gap-2 px-4 py-2 bg-white/5 backdrop-blur-xl border border-white/5 rounded-lg text-muted-foreground hover:text-primary transition-all duration-500"
         >
           <ChevronLeft size={16} />
-          <span className="text-[10px] uppercase tracking-[0.2em]">Menu</span>
+          <span className="text-[10px] uppercase tracking-[0.2em] font-bold">Menu</span>
         </button>
 
         <div className="relative">
@@ -149,13 +157,13 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
             className="flex items-center gap-2 px-4 py-2 bg-white/5 backdrop-blur-xl border border-white/5 rounded-lg text-muted-foreground hover:text-primary transition-all duration-500"
           >
             <MessageSquare size={16} strokeWidth={1.5} />
-            <span className="text-[10px] uppercase tracking-[0.2em]">History</span>
+            <span className="text-[10px] uppercase tracking-[0.2em] font-bold">History</span>
           </button>
 
           {showHistory && (
-            <div className="absolute top-14 right-0 w-80 h-[450px] bg-background/95 backdrop-blur-3xl border border-white/5 rounded-xl shadow-2xl p-4 flex flex-col z-[100]">
+            <div className="absolute top-14 right-0 w-80 h-[450px] bg-background/95 backdrop-blur-3xl border border-white/5 rounded-xl shadow-2xl p-4 flex flex-col z-[100] animate-in fade-in slide-in-from-top-4 duration-500">
               <div className="flex justify-between items-center mb-4 border-b border-white/5 pb-2">
-                <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Session</span>
+                <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Session Log</span>
                 <button onClick={() => setShowHistory(false)} className="p-1 hover:text-accent">
                   <X size={16} />
                 </button>
@@ -164,12 +172,13 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
                 <div className="space-y-4 pr-4">
                   {history.map((msg, i) => (
                     <div key={i} className={cn("flex flex-col gap-1", msg.role === 'user' ? "items-end" : "items-start")}>
-                      <span className="text-[7px] uppercase tracking-widest opacity-20">{msg.role}</span>
-                      <p className={cn("text-[10px] p-2 rounded-lg max-w-[90%]", msg.role === 'user' ? "bg-accent/10 text-primary" : "bg-primary/5 text-muted-foreground")}>
+                      <span className="text-[7px] uppercase tracking-widest opacity-20 font-bold">{msg.role === 'user' ? 'You' : 'Obscura'}</span>
+                      <p className={cn("text-[10px] p-2 rounded-lg max-w-[90%] leading-relaxed", msg.role === 'user' ? "bg-accent/10 text-primary" : "bg-primary/5 text-muted-foreground border border-white/5")}>
                         {msg.content}
                       </p>
                     </div>
                   ))}
+                  <div ref={scrollRef} />
                 </div>
               </ScrollArea>
             </div>
@@ -178,56 +187,57 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
       </div>
 
       {/* INTERFACE CENTRAL */}
-      <div className="flex flex-col items-center justify-center gap-12 w-full max-w-2xl px-8">
+      <div className="flex flex-col items-center justify-center gap-12 w-full max-w-2xl px-8 mt-12">
         <div className="h-16 flex flex-col items-center justify-center gap-2 text-center">
-          {error ? (
-            <div className="text-destructive text-[10px] uppercase tracking-widest font-bold flex items-center gap-2">
-              <AlertCircle size={14} /> {error}
-            </div>
-          ) : transcript && (
-            <p className="text-muted-foreground/30 text-[11px] uppercase tracking-widest italic">
+          {transcript && (
+            <p className="text-muted-foreground/40 text-[11px] uppercase tracking-widest italic animate-pulse">
               "{transcript}"
             </p>
           )}
         </div>
 
         {/* BOTAO MICROFONE CENTRAL */}
-        <div className="relative">
+        <div className="relative group">
+          {isRecording && <div className="absolute inset-0 rounded-full bg-accent/20 animate-ping" />}
+          
           <button
-            onClick={isRecording ? resetHardware : startListening}
+            onClick={isRecording ? () => recognitionRef.current.stop() : startListening}
             disabled={isProcessing}
             className={cn(
-              "relative z-10 w-48 h-48 md:w-64 md:h-64 rounded-full flex flex-col items-center justify-center transition-all duration-1000 border border-white/5",
-              isRecording ? "bg-accent/20 pulse-accent border-accent/30" : "bg-primary/5 hover:bg-accent/5 hover:border-accent/20",
+              "relative z-10 w-48 h-48 md:w-56 md:h-56 rounded-full flex flex-col items-center justify-center transition-all duration-1000 border border-white/5 shadow-2xl",
+              isRecording ? "bg-accent/20 border-accent/30 scale-105" : "bg-primary/5 hover:bg-accent/10 hover:border-accent/20",
               isProcessing && "opacity-30 cursor-not-allowed"
             )}
           >
-            {isRecording ? (
-              <Square className="w-12 h-12 text-accent" strokeWidth={1} fill="currentColor" />
-            ) : isProcessing ? (
-              <Loader2 className="w-16 h-16 text-accent animate-spin" strokeWidth={1} />
+            {isProcessing ? (
+              <Loader2 className="w-12 h-12 text-accent animate-spin" strokeWidth={1} />
+            ) : isRecording ? (
+              <Volume2 className="w-12 h-12 text-accent animate-pulse" strokeWidth={1} />
             ) : (
-              <Mic className="w-16 h-16 text-muted-foreground/20" strokeWidth={1} />
+              <Mic className="w-12 h-12 text-muted-foreground/30 group-hover:text-accent/50 transition-colors" strokeWidth={1} />
             )}
             
-            <span className={cn("absolute bottom-10 text-[9px] uppercase tracking-[0.4em] font-medium transition-opacity", isRecording ? "text-accent animate-pulse" : "text-muted-foreground/20")}>
+            <span className={cn(
+              "absolute bottom-8 text-[9px] uppercase tracking-[0.4em] font-bold transition-all", 
+              isRecording ? "text-accent animate-pulse" : "text-muted-foreground/20"
+            )}>
               {isRecording ? "Listening" : isProcessing ? "Thinking" : "Touch"}
             </span>
           </button>
         </div>
 
         {/* RESPOSTA DA IA */}
-        <div className="min-h-[120px] w-full flex items-center justify-center">
+        <div className="min-h-[140px] w-full flex items-center justify-center">
           {!isProcessing && aiResponse && (
-            <p className="text-primary font-light text-xl md:text-2xl tracking-wide leading-relaxed text-center fade-in-slow max-w-lg">
+            <p className="text-primary font-light text-xl md:text-2xl tracking-wide leading-relaxed text-center fade-in-slow max-w-lg selection:bg-accent/30">
               {aiResponse}
             </p>
           )}
           {isProcessing && (
-            <div className="flex gap-1.5">
-              <div className="w-1 h-1 rounded-full bg-accent/40 animate-bounce [animation-delay:-0.3s]" />
-              <div className="w-1 h-1 rounded-full bg-accent/40 animate-bounce [animation-delay:-0.15s]" />
-              <div className="w-1 h-1 rounded-full bg-accent/40 animate-bounce" />
+            <div className="flex gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-accent/40 animate-bounce [animation-delay:-0.3s]" />
+              <div className="w-1.5 h-1.5 rounded-full bg-accent/40 animate-bounce [animation-delay:-0.15s]" />
+              <div className="w-1.5 h-1.5 rounded-full bg-accent/40 animate-bounce" />
             </div>
           )}
         </div>
