@@ -1,3 +1,4 @@
+
 'use server';
 
 import { ai } from '@/ai/genkit';
@@ -48,7 +49,7 @@ async function toWav(
   });
 }
 
-export async function voiceChat(input: VoiceChatInput): Promise<VoiceChatOutput> {
+export async function voiceChat(input: VoiceChatInput): Promise<VoidChatOutput> {
   return voiceChatFlow(input);
 }
 
