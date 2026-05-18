@@ -102,7 +102,8 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
 
       try {
         const recognition = new SpeechRecognition();
-        recognition.lang = level === 'advanced' ? 'en-US' : (level === 'beginner' ? 'pt-BR' : 'en-US');
+        // Ajuste de idioma: Se beginner ou intermediate, aceita português para facilitar a vida do usuário
+        recognition.lang = level === 'advanced' ? 'en-US' : 'pt-BR';
         recognition.continuous = false;
         recognition.interimResults = false;
 
