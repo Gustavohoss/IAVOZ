@@ -1,6 +1,6 @@
 'use server';
 /**
- * @fileOverview Fluxo de latência ultra-baixa para o Obscura English Tutor.
+ * @fileOverview Fluxo de latência ultra-baixa com memória para o Obscura English Tutor.
  */
 
 import { ai } from '@/ai/genkit';
@@ -8,8 +8,14 @@ import { z } from 'zod';
 import wav from 'wav';
 import { googleAI } from '@genkit-ai/google-genai';
 
+const MessageSchema = z.object({
+  role: z.enum(['user', 'model']),
+  content: z.string(),
+});
+
 const VoiceChatInputSchema = z.object({
   userMessage: z.string().describe('Texto transcrito da fala do usuário.'),
+  history: z.array(MessageSchema).optional().describe('Histórico da conversa atual.'),
 });
 export type VoiceChatInput = z.infer<typeof VoiceChatInputSchema>;
 
@@ -55,15 +61,30 @@ const voiceChatFlow = ai.defineFlow(
     outputSchema: VoiceChatOutputSchema,
   },
   async (input) => {
-    // Resposta ultra-curta para minimizar tempo de geração e síntese
+    const history = input.history || [];
+    
+    // Converte o histórico para o formato esperado pelo Genkit
+    const messages = history.map(m => ({
+      role: m.role as 'user' | 'model',
+      content: [{ text: m.content }]
+    }));
+
+    // Adiciona a nova mensagem do usuário
+    messages.push({
+      role: 'user',
+      content: [{ text: input.userMessage }]
+    });
+
     const { text } = await ai.generate({
-      system: `Você é Obscura, um professor de inglês ágil.
+      system: `Você é Obscura, um professor de inglês ágil e acolhedor.
+      OBJETIVO: Construir uma conversa natural e ensinar inglês.
       REGRAS DE OURO:
-      1. RESPONDA NO MESMO IDIOMA QUE O USUÁRIO FALAR.
-      2. Se ele falar português, responda em português, ensine o termo em inglês e faça uma pergunta curta.
-      3. Seja EXTREMAMENTE CONCISO. Máximo de 15 palavras.
-      4. Foco em fluidez e velocidade.`,
-      prompt: input.userMessage,
+      1. RESPONDA NO MESMO IDIOMA QUE O USUÁRIO FALAR. Se ele falar português, responda em português.
+      2. Mantenha o contexto da conversa. Lembre-se do que foi dito anteriormente.
+      3. Se o usuário estiver começando, ofereça ensinar o básico ou temas específicos.
+      4. Seja EXTREMAMENTE CONCISO. Máximo de 20 palavras por resposta.
+      5. Foco em fluidez e velocidade.`,
+      messages: messages,
     });
 
     if (!text) throw new Error('No response from AI');

@@ -5,12 +5,18 @@ import { voiceChat } from "@/ai/flows/voice-chat-flow";
 import { Mic, Loader2, AlertCircle, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+type Message = {
+  role: 'user' | 'model';
+  content: string;
+};
+
 export function VoidVoice() {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [aiResponse, setAiResponse] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<Message[]>([]);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
@@ -19,13 +25,12 @@ export function VoidVoice() {
   const killRecognition = useCallback(() => {
     if (recognitionRef.current) {
       const rec = recognitionRef.current;
-      // Remove todos os handlers para evitar chamadas fantasmas
       rec.onstart = null;
       rec.onresult = null;
       rec.onerror = null;
       rec.onend = null;
       try {
-        rec.abort(); // Abort é mais agressivo que stop() para liberar o mic
+        rec.abort(); 
       } catch (e) {
         // Ignora erros de encerramento
       }
@@ -48,8 +53,20 @@ export function VoidVoice() {
     }
     
     try {
-      const result = await voiceChat({ userMessage: text });
+      // Chama a IA passando o histórico acumulado
+      const result = await voiceChat({ 
+        userMessage: text,
+        history: history 
+      });
+      
       setAiResponse(result.text);
+
+      // Atualiza o histórico local com a nova interação
+      setHistory(prev => [
+        ...prev,
+        { role: 'user', content: text },
+        { role: 'model', content: result.text }
+      ]);
       
       if (audioRef.current && result.audioDataUri) {
         audioRef.current.src = result.audioDataUri;
@@ -78,7 +95,7 @@ export function VoidVoice() {
 
       try {
         const recognition = new SpeechRecognition();
-        recognition.lang = 'pt-BR'; // Detecta PT-BR e EN-US melhor com essa base
+        recognition.lang = 'pt-BR'; 
         recognition.continuous = false;
         recognition.interimResults = false;
         recognition.maxAlternatives = 1;
@@ -119,8 +136,8 @@ export function VoidVoice() {
         setError("Não foi possível iniciar o microfone.");
         setIsRecording(false);
       }
-    }, 250); // Delay de segurança essencial para o hardware
-  }, [killRecognition]);
+    }, 250); 
+  }, [killRecognition, history]);
 
   const toggleSession = () => {
     if (isProcessing) return;
@@ -131,7 +148,6 @@ export function VoidVoice() {
     }
   };
 
-  // Limpeza ao desmontar o componente
   useEffect(() => {
     return () => killRecognition();
   }, [killRecognition]);
