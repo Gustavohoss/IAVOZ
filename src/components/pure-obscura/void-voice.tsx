@@ -33,42 +33,40 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
   const recognitionRef = useRef<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll para o histórico
+  // Auto-scroll
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [history]);
 
-  // Função para limpar TUDO que pode travar o hardware
+  // Limpeza absoluta de hardware
   const killHardware = () => {
     if (recognitionRef.current) {
       try {
         recognitionRef.current.onresult = null;
         recognitionRef.current.onend = null;
         recognitionRef.current.onerror = null;
-        recognitionRef.current.stop();
-        recognitionRef.current = null;
+        recognitionRef.current.onstart = null;
+        recognitionRef.current.abort();
       } catch (e) {}
+      recognitionRef.current = null;
     }
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.src = "";
     }
+    setIsRecording(false);
   };
 
   const playAudio = async (uri: string) => {
-    if (!audioRef.current) {
-      audioRef.current = new Audio();
-    }
-    
+    if (!audioRef.current) audioRef.current = new Audio();
     setAudioBlocked(false);
     audioRef.current.src = uri;
-    
     try {
       await audioRef.current.play();
     } catch (err) {
-      console.warn("Autoplay blocked", err);
+      console.warn("Autoplay blocked");
       setAudioBlocked(true);
       setLastAudioUri(uri);
     }
@@ -103,22 +101,21 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
       console.error("AI Error:", err);
       toast({
         variant: "destructive",
-        title: "Communication Void",
-        description: "The Obscura is drifting. Try again.",
+        title: "Void Error",
+        description: "The stillness was interrupted. Try again.",
       });
     } finally {
       setIsProcessing(false);
-      setTranscript("");
     }
   };
 
   const startListening = () => {
     if (isProcessing || isRecording) return;
     
-    // Mata qualquer sessão anterior e áudio antes de começar
+    // Mata qualquer estado anterior antes de começar do zero
     killHardware();
 
-    // Desbloqueia o áudio com silêncio
+    // Desbloqueia o áudio com silêncio (necessário para navegadores)
     const silenceUri = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==";
     const silent = new Audio(silenceUri);
     silent.play().catch(() => {});
@@ -135,7 +132,10 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
     recognition.interimResults = true;
     recognition.lang = level === 'advanced' ? 'en-US' : 'pt-BR';
 
-    recognition.onstart = () => setIsRecording(true);
+    recognition.onstart = () => {
+      setIsRecording(true);
+      setTranscript("");
+    };
 
     recognition.onresult = (event: any) => {
       const current = event.resultIndex;
@@ -144,8 +144,7 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
       setTranscript(text);
 
       if (result.isFinal) {
-        killHardware(); // Libera o microfone IMEDIATAMENTE após capturar
-        setIsRecording(false);
+        killHardware(); 
         handleAIQuery(text);
       }
     };
@@ -156,17 +155,25 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
 
     recognition.onerror = (event: any) => {
       console.error('Mic Error:', event.error);
-      setIsRecording(false);
       killHardware();
     };
 
     recognitionRef.current = recognition;
-    recognition.start();
+    
+    // Pequeno atraso para garantir que o hardware foi liberado pela função killHardware anterior
+    setTimeout(() => {
+      try {
+        recognition.start();
+      } catch (e) {
+        console.error("Start error:", e);
+        killHardware();
+      }
+    }, 100);
   };
 
   return (
     <div className="w-full h-screen flex flex-col items-center justify-center relative bg-[#050505] overflow-hidden">
-      {/* HEADER CONTROLS */}
+      {/* HEADER CONTROLS - FIXED TOP */}
       <div className="fixed top-8 inset-x-8 flex justify-between items-start z-50">
         <button 
           onClick={onBack}
@@ -241,7 +248,7 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
             onClick={startListening}
             disabled={isProcessing}
             className={cn(
-              "relative z-10 w-48 h-48 md:w-56 md:h-56 rounded-full flex flex-col items-center justify-center transition-all duration-1000 border border-white/5 shadow-2xl",
+              "relative z-10 w-48 h-48 md:w-56 md:h-56 rounded-full flex flex-col items-center justify-center transition-all duration-700 border border-white/5 shadow-2xl",
               isRecording ? "bg-accent/20 border-accent/30 scale-105 shadow-[0_0_50px_-12px_rgba(168,85,247,0.3)]" : "bg-primary/5 hover:bg-accent/10 hover:border-accent/20",
               isProcessing && "opacity-30 cursor-not-allowed"
             )}
@@ -266,7 +273,7 @@ export function VoidVoice({ level, onBack }: VoidVoiceProps) {
         {/* AI RESPONSE AREA */}
         <div className="min-h-[140px] w-full flex items-center justify-center">
           {!isProcessing && aiResponse && (
-            <p className="text-primary font-light text-xl md:text-2xl tracking-wide leading-relaxed text-center fade-in-slow max-w-lg selection:bg-accent/30">
+            <p className="text-primary font-light text-xl md:text-2xl tracking-wide leading-relaxed text-center fade-in-slow max-w-lg">
               {aiResponse}
             </p>
           )}
